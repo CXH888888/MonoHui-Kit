@@ -23,6 +23,9 @@ struct DateFolderPopover: View {
     @State private var showError = false
     @State private var errorMessage = ""
 
+    // "其他"输入框焦点：切到"其他"时自动聚焦，免二次点击
+    @FocusState private var customChannelFocused: Bool
+
     private var selectedFileCount: Int {
         state.preloadedURLs.count
     }
@@ -134,16 +137,18 @@ struct DateFolderPopover: View {
                     )
                 }
                 // "其他" pill：未选中时是普通 pill（带编辑 icon 提示可自定义），
-                // 选中时变成内联输入框（蓝底，直接在 pill 位置编辑）
+                // 选中时变成内联输入框（灰底蓝描边，直接在 pill 位置编辑）
                 if channel == "其他" {
                     HStack(spacing: 4) {
                         Image(systemName: "pencil")
                             .font(.system(size: 10, weight: .regular))
+                            .foregroundStyle(Color.appleBlue)
                         TextField("输入", text: $customChannel)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.appleInk)
                             .frame(width: 60)
+                            .focused($customChannelFocused)
                             .onSubmit {
                                 create()
                             }
@@ -151,13 +156,24 @@ struct DateFolderPopover: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .frame(minHeight: 32)
-                    .background(Color.appleBlue)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .background(Color.appleSurface2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.appleBlue, lineWidth: 1.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onAppear { customChannelFocused = true }
                 } else {
                     PillButton(
                         label: "其他",
                         isSelected: false,
-                        action: { channel = "其他" }
+                        action: {
+                            channel = "其他"
+                            // 切换后等 TextField 渲染完成再聚焦
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                customChannelFocused = true
+                            }
+                        }
                     )
                 }
                 Spacer(minLength: 0)

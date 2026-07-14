@@ -223,15 +223,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        let launchedByService = isLaunchedByServiceMenu
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // 交互弹窗模式：强制置顶 + 居中
+            // 交互弹窗模式：把弹窗窗口置顶 + 居中
             let isInteractive = (module == "compress" && moduleArgs["mode"] == "interactive")
                 || (module == "datefolder" && moduleArgs["mode"] == "interactive")
-            for window in NSApplication.shared.windows {
-                if isInteractive {
-                    window.center()
-                    window.level = .screenSaver
-                    window.makeKeyAndOrderFront(nil)
+            if isInteractive {
+                if launchedByService {
+                    // 服务菜单新进程：主窗口就是弹窗（ContentView 根据 module 显示弹窗视图），无 identifier
+                    // 直接把所有窗口设成 screenSaver
+                    for window in NSApplication.shared.windows {
+                        window.center()
+                        window.level = .screenSaver
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                } else {
+                    // 主进程已驻留：只动独立弹窗窗口（identifier=InteractivePopup），不动主窗口
+                    for window in NSApplication.shared.windows where window.identifier?.rawValue == "InteractivePopup" {
+                        window.center()
+                        window.level = .screenSaver
+                        window.makeKeyAndOrderFront(nil)
+                    }
                 }
             }
             NSApp.activate(ignoringOtherApps: true)

@@ -147,8 +147,10 @@ final class HotKeyDispatcher {
 
         // 关闭旧窗口后再设置 urls，避免被 windowWillClose 清空
         state.preloadedURLs = urls
-        state.module = module
-        state.moduleArgs = ["mode": "interactive"]
+        // 注意：不设置 state.module / state.moduleArgs
+        // openStandaloneWindow 创建的独立窗口直接用弹窗视图作为 root，不经过 ContentView 路由
+        // 设置 state.module 会让主窗口的 ContentView 也切换成弹窗视图（用户看到"主窗口也变成弹窗"）
+        // module 参数只用于下面决定创建哪种弹窗窗口
 
         AppLog.shared.log("创建独立窗口 module=\(module) urls=\(urls.count)", category: "Dispatcher")
         if module == "compress" {

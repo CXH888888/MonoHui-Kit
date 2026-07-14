@@ -16,7 +16,7 @@ struct PillButton: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: 32)
                 .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }

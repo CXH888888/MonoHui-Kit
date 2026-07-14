@@ -22,7 +22,7 @@ struct DateFolderView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("日期文件夹")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(Color.appleInk)
             Text("在 Finder 中右键文件 → 服务 → 文件夹·新建-XXX\n即可在同级目录创建以日期命名的文件夹")
                 .font(.system(size: 13, weight: .regular))
@@ -30,37 +30,50 @@ struct DateFolderView: View {
         }
     }
 
+    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundStyle(Color.appleMuted)
+    }
+
     private var defaultFormatsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("默认格式（右键服务菜单）")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
+            sectionHeader("默认格式（右键服务菜单）")
 
-            ForEach(DateFolderModule.defaultFormats, id: \.format) { item in
-                HStack(spacing: 12) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(Color.appleBlue)
-                    Text(item.label)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color.appleInk)
-                    Spacer()
-                    Text("示例: \(item.example)")
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .foregroundStyle(Color.appleSoft)
+            VStack(spacing: 6) {
+                ForEach(DateFolderModule.defaultFormats, id: \.format) { item in
+                    HStack(spacing: 12) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 14))
+                            .frame(width: 16, height: 16)
+                            .foregroundStyle(Color.appleBlue)
+                        Text(item.label)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(Color.appleInk)
+                        Spacer()
+                        Text("示例: \(item.example)")
+                            .font(.system(size: 13, weight: .regular, design: .monospaced))
+                            .foregroundStyle(Color.appleSoft)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.appleCanvas)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .padding(.vertical, 6)
-                .padding(.horizontal, 12)
-                .background(Color.appleSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+            .padding(14)
+            .background(Color.appleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 
     private var customSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("自定义（影响所有日期文件夹）")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
+            sectionHeader("自定义（影响所有日期文件夹）")
 
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
@@ -98,13 +111,13 @@ struct DateFolderView: View {
 
     private var behaviorSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("新建后行为")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
+            sectionHeader("新建后行为")
 
             let hasPermission = DateFolderEngine.hasAccessibilityPermission()
             HStack(spacing: 8) {
                 Image(systemName: hasPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.system(size: 14))
+                    .frame(width: 16, height: 16)
                     .foregroundStyle(hasPermission ? .green : .orange)
                 Text(hasPermission
                      ? "已获得辅助功能权限，新建后将自动进入重命名模式"

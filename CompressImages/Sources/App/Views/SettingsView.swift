@@ -7,14 +7,15 @@ struct SettingsView: View {
     @State private var operationInProgress = false
     @State private var hasAccessibilityPermission = false
     @State private var hasNotificationPermission = false
+    @State private var showDiagnostics = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 24) {
+                topBar
                 permissionSection
                 serviceMenuSection
                 aboutSection
-                DiagnosticsView()
             }
             .padding(28)
         }
@@ -24,40 +25,78 @@ struct SettingsView: View {
             refreshStatus()
             refreshPermissions()
         }
+        .sheet(isPresented: $showDiagnostics) {
+            DiagnosticsView()
+        }
     }
+
+    // MARK: - 顶部条：标题 + 诊断日志按钮
+
+    private var topBar: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("设置")
+                    .font(.system(size: 21, weight: .semibold))
+                    .foregroundStyle(Color.appleInk)
+                Text("管理权限、服务菜单与诊断日志")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color.appleSoft)
+            }
+            Spacer()
+            Button {
+                showDiagnostics = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 13, weight: .regular))
+                    Text("诊断日志")
+                        .font(.system(size: 13, weight: .regular))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .frame(height: 32)
+                .background(Color.appleBlue)
+                .clipShape(RoundedRectangle(cornerRadius: 980))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - 权限（surface 卡片）
 
     private var permissionSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("权限")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-
-            permissionRow(
-                name: "辅助功能",
-                description: "用于日期文件夹自动进入重命名模式",
-                granted: hasAccessibilityPermission,
-                settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-            )
-
-            permissionRow(
-                name: "通知",
-                description: "用于压缩完成通知",
-                granted: hasNotificationPermission,
-                settingsURL: "x-apple.systempreferences:com.apple.preference.notifications"
-            )
+            sectionHeader("权限")
+            VStack(spacing: 8) {
+                permissionRow(
+                    name: "辅助功能",
+                    description: "用于日期文件夹自动进入重命名模式",
+                    granted: hasAccessibilityPermission,
+                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                )
+                permissionRow(
+                    name: "通知",
+                    description: "用于压缩完成通知",
+                    granted: hasNotificationPermission,
+                    settingsURL: "x-apple.systempreferences:com.apple.preference.notifications"
+                )
+            }
         }
     }
 
     private func permissionRow(name: String, description: String, granted: Bool, settingsURL: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .frame(width: 16, height: 16)
                 .foregroundStyle(granted ? .green : .orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleInk)
                 Text(description)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
             }
             Spacer()
@@ -67,42 +106,29 @@ struct SettingsView: View {
                 }
             }
             .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .regular))
+            .font(.system(size: 13, weight: .regular))
             .foregroundStyle(Color.appleBlue)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
         .background(Color.appleSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
+
+    // MARK: - 服务菜单（surface 卡片 + 内部分组卡片）
 
     private var serviceMenuSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("服务菜单")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-
+            sectionHeader("服务菜单")
             Text("每个服务项可独立安装或移除，安装后出现在 Finder 右键 → 服务中")
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Color.appleSoft)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("图片")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                ForEach(CompressModule.serviceActions, id: \.id) { action in
-                    serviceRow(action)
-                }
-            }
+            // 分组：图片
+            serviceGroup(title: "图片", actions: CompressModule.serviceActions)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("文件夹")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                ForEach(DateFolderModule.serviceActions, id: \.id) { action in
-                    serviceRow(action)
-                }
-            }
+            // 分组：文件夹
+            serviceGroup(title: "文件夹", actions: DateFolderModule.serviceActions)
 
             HStack(spacing: 10) {
                 Button(action: installAll) {
@@ -133,10 +159,26 @@ struct SettingsView: View {
         }
     }
 
+    private func serviceGroup(title: String, actions: [ServiceAction]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.appleSoft)
+            ForEach(actions, id: \.id) { action in
+                serviceRow(action)
+            }
+        }
+        .padding(14)
+        .background(Color.appleSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
     private func serviceRow(_ action: ServiceAction) -> some View {
         let isInstalled = installedActions.contains(action.id)
         return HStack(spacing: 10) {
             Image(systemName: isInstalled ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13))
+                .frame(width: 14, height: 14)
                 .foregroundStyle(isInstalled ? .green : Color.appleMuted)
             Text(action.menuName)
                 .font(.system(size: 13, weight: .regular))
@@ -158,16 +200,15 @@ struct SettingsView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.appleSurface)
+        .background(Color.appleCanvas)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("关于")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
+    // MARK: - 关于（surface 卡片）
 
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("关于")
             HStack(spacing: 16) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
@@ -186,7 +227,20 @@ struct SettingsView: View {
                         .foregroundStyle(Color.appleMuted)
                 }
             }
+            .padding(14)
+            .background(Color.appleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
+    }
+
+    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundStyle(Color.appleMuted)
     }
 
     private var appVersion: String {

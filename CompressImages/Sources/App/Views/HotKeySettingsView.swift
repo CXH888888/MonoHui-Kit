@@ -20,7 +20,8 @@ struct HotKeySettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 24) {
+                pageHeader
                 masterToggleSection
                 launchAtLoginSection
                 shortcutListSection
@@ -53,14 +54,34 @@ struct HotKeySettingsView: View {
         }
     }
 
+    // MARK: - 页面头部（title-lg 21/600 + 副标题）
+
+    private var pageHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("快捷键")
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(Color.appleInk)
+            Text("设置全局快捷键，启用后 App 驻留菜单栏")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color.appleSoft)
+        }
+    }
+
+    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .tracking(0.8)
+            .textCase(.uppercase)
+            .foregroundStyle(Color.appleMuted)
+    }
+
     // MARK: - 总开关
 
     private var masterToggleSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("全局快捷键")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("总开关")
             HStack(spacing: 12) {
                 Toggle("", isOn: Binding(
                     get: { state.hotKeyEnabled },
@@ -95,56 +116,67 @@ struct HotKeySettingsView: View {
     @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
 
     private var launchAtLoginSection: some View {
-        HStack(spacing: 12) {
-            Toggle("", isOn: Binding(
-                get: { launchAtLoginEnabled },
-                set: { newValue in
-                    if LaunchAtLogin.setEnabled(newValue) {
-                        launchAtLoginEnabled = newValue
-                        showToast(newValue ? "开机自启动已启用" : "开机自启动已禁用", error: false)
-                    } else {
-                        showToast("设置失败，请在系统设置中手动添加", error: true)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("开机自启动")
+            HStack(spacing: 12) {
+                Toggle("", isOn: Binding(
+                    get: { launchAtLoginEnabled },
+                    set: { newValue in
+                        if LaunchAtLogin.setEnabled(newValue) {
+                            launchAtLoginEnabled = newValue
+                            showToast(newValue ? "开机自启动已启用" : "开机自启动已禁用", error: false)
+                        } else {
+                            showToast("设置失败，请在系统设置中手动添加", error: true)
+                        }
                     }
-                }
-            ))
-            .labelsHidden()
-            .controlSize(.large)
+                ))
+                .labelsHidden()
+                .controlSize(.large)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("开机自启动")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.appleInk)
-                Text("开机后自动驻留菜单栏，快捷键随时可用")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(Color.appleSoft)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("开机自启动")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.appleInk)
+                    Text("开机后自动驻留菜单栏，快捷键随时可用")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Color.appleSoft)
+                }
+                Spacer()
             }
-            Spacer()
+            .padding(14)
+            .background(Color.appleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .disabled(!state.hotKeyEnabled)
+            .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
         }
-        .padding(14)
-        .background(Color.appleSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .disabled(!state.hotKeyEnabled)
-        .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
     }
 
     // MARK: - 快捷键列表
 
     private var shortcutListSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            let categories = Dictionary(grouping: HotKeyActionId.allCases, by: { $0.category })
-            ForEach(categories.keys.sorted(), id: \.self) { category in
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(category)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleSoft)
-                    ForEach(categories[category] ?? [], id: \.rawValue) { actionId in
-                        shortcutRow(actionId)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("快捷键列表")
+            VStack(alignment: .leading, spacing: 14) {
+                let categories = Dictionary(grouping: HotKeyActionId.allCases, by: { $0.category })
+                ForEach(categories.keys.sorted(), id: \.self) { category in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(category)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.appleSoft)
+                        VStack(spacing: 6) {
+                            ForEach(categories[category] ?? [], id: \.rawValue) { actionId in
+                                shortcutRow(actionId)
+                            }
+                        }
                     }
                 }
             }
+            .padding(14)
+            .background(Color.appleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .disabled(!state.hotKeyEnabled)
+            .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
         }
-        .disabled(!state.hotKeyEnabled)
-        .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
     }
 
     private func shortcutRow(_ actionId: HotKeyActionId) -> some View {
@@ -209,7 +241,7 @@ struct HotKeySettingsView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.appleSurface)
+        .background(Color.appleCanvas)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .id(refreshTrigger)
     }
@@ -218,48 +250,55 @@ struct HotKeySettingsView: View {
 
     private var conflictInfoSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("冲突检查")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.appleSoft)
+            sectionHeader("冲突检查")
 
             let conflicts = detectConflicts()
-            if conflicts.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("无冲突")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color.appleInk)
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(Color.appleSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                ForEach(conflicts, id: \.self) { msg in
+            VStack(spacing: 6) {
+                if conflicts.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text(msg)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13))
+                            .frame(width: 14, height: 14)
+                            .foregroundStyle(.green)
+                        Text("无冲突")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundStyle(Color.appleInk)
+                        Spacer()
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 12)
-                    .background(Color.appleSurface)
+                    .background(Color.appleCanvas)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    ForEach(conflicts, id: \.self) { msg in
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 13))
+                                .frame(width: 14, height: 14)
+                                .foregroundStyle(.orange)
+                            Text(msg)
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(Color.appleInk)
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color.appleCanvas)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
+            .padding(14)
+            .background(Color.appleSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 
     // MARK: - 关于
 
     private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("使用说明")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.appleSoft)
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("使用说明")
             VStack(alignment: .leading, spacing: 6) {
                 Text("• 启用全局快捷键后，App 将驻留菜单栏（Dock 图标隐藏）")
                 Text("• 在 Finder 中选中文件，按对应快捷键即可触发")

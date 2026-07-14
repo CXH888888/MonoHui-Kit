@@ -6,7 +6,28 @@
 
 （开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
-## [v0.4.4] - 2026-07-14
+## [v0.5.0] - 2026-07-14
+
+（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
+
+### 修复
+- 新建文件夹弹窗点击「其他」需二次点击才能输入：加 @FocusState，点击「其他」pill 后延迟 0.05s 自动聚焦 TextField，同时 onAppear 也触发聚焦
+- 主窗口被改成弹窗层级（根因）：HotKeyDispatcher.showInteractivePopover 设置 state.module 导致主窗口 ContentView 也切换成弹窗视图。修复为不设置 state.module（独立窗口直接用弹窗视图作为 root，不经过 ContentView 路由）
+- AppState 启动时窗口置顶逻辑区分进程类型：服务菜单新进程（主窗口=弹窗）无差别置顶；主进程已驻留（快捷键触发）只动 identifier=InteractivePopup 的独立弹窗窗口，主窗口保持 .normal
+
+## [v0.4.5] - 2026-07-14
+
+（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
+
+### 变更
+- 诊断日志改为 sheet 弹窗形态：设置页右上角加「诊断日志」蓝色 pill 按钮触发，点击后弹出 760×620 的独立窗口（含手动测试区 + 日志列表区），Esc 可关闭。原设置页底部的 DiagnosticsView 内嵌块移除
+- 重写 SidebarView：左上「功能」区按钮加大（40pt 高，icon 16+text 15），左下「设置」区按钮收小（30pt 高，icon 13+text 13）。加 micro 样式 section header（11/500/uppercase/0.066em tracking），主次分明。所有 icon 加 frame(width:height:) 强制对齐
+- SettingsView 全面规范化：标题改用 title-lg（21/600）；section header 统一 micro 样式；服务菜单「图片」「文件夹」分组用 surface 卡片包裹；权限行/服务行加 icon frame 对齐
+- DateFolderView 规范化：标题 22→21；section header 改 micro 样式；默认格式列表用 surface 卡片包裹，内部每项用 canvas 子卡片
+- DiagnosticsView 改为弹窗形态：标题用 title-lg（21/600），手动测试与日志列表区分别用 surface 卡片包裹，按钮用 980px pill 或带 border 的 8px 标准 card
+- PillButton cornerRadius 5→6（更贴近 spec pill 规范）
+
+## [v0.4.3] - 2026-07-14
 
 （开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
