@@ -1,0 +1,16 @@
+# Build artifacts
+Build/
+CompressImages/.build/
+CompressImages/Sources/App/Resources/tools/
+CompressImages/Sources/App/Resources/lib/
+
+# Trae / IDE
+.trae/
+.workbuddy/
+.DS_Store
+
+# Logs
+*.log
+
+# Build number
+.build_number

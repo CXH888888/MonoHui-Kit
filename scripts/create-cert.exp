@@ -1,0 +1,26 @@
+#!/usr/bin/expect -f
+set timeout 30
+spawn certtool c
+expect "label:"
+send "QuickActions Local Signing\r"
+expect "algorithm by letter:"
+send "r\r"
+expect "key size in bits"
+send "\r"
+expect "OK (y/anything)?"
+send "y\r"
+expect "cert/key usage"
+send "s\r"
+expect "use encryption"
+send "n\r"
+expect "Is this a CA"
+send "n\r"
+expect "serial number"
+send "\r"
+expect "valid for"
+send "3650\r"
+expect "blank for no limit"
+send "\r"
+expect "correct?"
+send "y\r"
+expect eof
