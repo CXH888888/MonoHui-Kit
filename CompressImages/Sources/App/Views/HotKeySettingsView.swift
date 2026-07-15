@@ -5,17 +5,11 @@ import Carbon
 struct HotKeySettingsView: View {
     @Environment(AppState.self) var state
 
-    // 当前正在录制的 actionId；nil 表示未在录制
     @State private var recordingId: HotKeyActionId?
-    // 录制捕获的组合
     @State private var recordedCombo: KeyCombination?
-    // 错误/冲突提示
     @State private var toastMessage: String?
     @State private var toastIsError = false
-
-    // 触发 UI 重新渲染（@AppStorage 的值变化会自动触发，但读取时需要刷新）
     @State private var refreshTrigger = 0
-    // 录制键盘事件的 monitor 引用（避免泄漏）
     @State private var keyMonitor: Any?
 
     var body: some View {
@@ -31,6 +25,7 @@ struct HotKeySettingsView: View {
             .padding(28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollContentBackground(.hidden)
         .background(Color.appleCanvas)
         .overlay(alignment: .bottom) {
             if let toast = toastMessage {
@@ -45,7 +40,6 @@ struct HotKeySettingsView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        // 监听菜单栏的"打开设置"通知
         .onReceive(NotificationCenter.default.publisher(for: .toggleHotKeyFromStatusBar)) { note in
             if let enabled = note.userInfo?["enabled"] as? Bool {
                 state.hotKeyEnabled = enabled
@@ -54,7 +48,7 @@ struct HotKeySettingsView: View {
         }
     }
 
-    // MARK: - 页面头部（title-lg 21/600 + 副标题）
+    // MARK: - 页面头部
 
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -67,22 +61,24 @@ struct HotKeySettingsView: View {
         }
     }
 
-    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
-
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .tracking(0.8)
-            .textCase(.uppercase)
-            .foregroundStyle(Color.appleMuted)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.appleInk)
     }
 
-    // MARK: - 总开关
+    private var divider: some View {
+        Divider()
+            .background(Color.appleDivider)
+            .padding(.horizontal, 16)
+    }
+
+    // MARK: - 总开关（surface 卡片 + border）
 
     private var masterToggleSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("总开关")
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Toggle("", isOn: Binding(
                     get: { state.hotKeyEnabled },
                     set: { newValue in
@@ -94,9 +90,9 @@ struct HotKeySettingsView: View {
                 .labelsHidden()
                 .controlSize(.large)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(state.hotKeyEnabled ? "已启用" : "未启用")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.appleInk)
                     Text("启用后 App 驻留菜单栏，在 Finder 选中文件按快捷键即可触发对应功能")
                         .font(.system(size: 12, weight: .regular))
@@ -105,20 +101,24 @@ struct HotKeySettingsView: View {
                 }
                 Spacer()
             }
-            .padding(14)
+            .padding(16)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    // MARK: - 开机自启动
+    // MARK: - 开机自启动（surface 卡片 + border）
 
     @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
 
     private var launchAtLoginSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("开机自启动")
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Toggle("", isOn: Binding(
                     get: { launchAtLoginEnabled },
                     set: { newValue in
@@ -133,7 +133,7 @@ struct HotKeySettingsView: View {
                 .labelsHidden()
                 .controlSize(.large)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("开机自启动")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Color.appleInk)
@@ -143,37 +143,54 @@ struct HotKeySettingsView: View {
                 }
                 Spacer()
             }
-            .padding(14)
+            .padding(16)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .disabled(!state.hotKeyEnabled)
             .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
         }
     }
 
-    // MARK: - 快捷键列表
+    // MARK: - 快捷键列表（surface 卡片 + border，功能行用 divider 分隔）
 
     private var shortcutListSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("快捷键列表")
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 let categories = Dictionary(grouping: HotKeyActionId.allCases, by: { $0.category })
-                ForEach(categories.keys.sorted(), id: \.self) { category in
-                    VStack(alignment: .leading, spacing: 8) {
+                let sortedCategories = categories.keys.sorted()
+                ForEach(Array(sortedCategories.enumerated()), id: \.element) { catIndex, category in
+                    VStack(alignment: .leading, spacing: 0) {
                         Text(category)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.appleSoft)
-                        VStack(spacing: 6) {
-                            ForEach(categories[category] ?? [], id: \.rawValue) { actionId in
-                                shortcutRow(actionId)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+                        let actions = categories[category] ?? []
+                        ForEach(Array(actions.enumerated()), id: \.element.rawValue) { index, actionId in
+                            shortcutRow(actionId)
+                            if index < actions.count - 1 {
+                                divider
                             }
                         }
                     }
+                    if catIndex < sortedCategories.count - 1 {
+                        divider
+                    }
                 }
             }
-            .padding(14)
+            .padding(.bottom, 4)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .disabled(!state.hotKeyEnabled)
             .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
         }
@@ -183,16 +200,16 @@ struct HotKeySettingsView: View {
         let combo = HotKeyManager.shared.currentCombination(for: actionId)
         let isRecording = recordingId == actionId
 
-        return HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green.opacity(0.001))
-                .font(.system(size: 13))
+        return HStack(spacing: 12) {
+            Image(systemName: "circle.fill")
+                .foregroundStyle(Color.appleBlue.opacity(0.001))
+                .font(.system(size: 14))
+                .frame(width: 18, height: 18)
             Text(actionId.displayName)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color.appleInk)
             Spacer()
 
-            // 当前快捷键显示
             if isRecording {
                 Text("按任意键组合…（Esc 取消）")
                     .font(.system(size: 12, weight: .regular))
@@ -219,14 +236,13 @@ struct HotKeySettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
 
-            // 录制 / 保存 / 取消 按钮
             if isRecording {
                 Button("取消") {
                     recordingId = nil
                     recordedCombo = nil
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Color.appleSoft)
             } else {
                 Button("录制") {
@@ -235,91 +251,95 @@ struct HotKeySettingsView: View {
                     installRecorder()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Color.appleBlue)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color.appleCanvas)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
         .id(refreshTrigger)
     }
 
-    // MARK: - 冲突信息
+    // MARK: - 冲突信息（surface 卡片 + border）
 
     private var conflictInfoSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("冲突检查")
 
             let conflicts = detectConflicts()
-            VStack(spacing: 6) {
+            VStack(spacing: 0) {
                 if conflicts.isEmpty {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13))
-                            .frame(width: 14, height: 14)
+                            .font(.system(size: 16))
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(.green)
                         Text("无冲突")
-                            .font(.system(size: 13, weight: .regular))
+                            .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(Color.appleInk)
                         Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.appleCanvas)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
                 } else {
-                    ForEach(conflicts, id: \.self) { msg in
-                        HStack(spacing: 8) {
+                    ForEach(Array(conflicts.enumerated()), id: \.element) { index, msg in
+                        HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 13))
-                                .frame(width: 14, height: 14)
+                                .font(.system(size: 16))
+                                .frame(width: 20, height: 20)
                                 .foregroundStyle(.orange)
                             Text(msg)
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.system(size: 14, weight: .regular))
                                 .foregroundStyle(Color.appleInk)
                             Spacer()
                         }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 12)
-                        .background(Color.appleCanvas)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        if index < conflicts.count - 1 {
+                            divider
+                        }
                     }
                 }
             }
-            .padding(14)
+            .padding(.vertical, 4)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    // MARK: - 关于
+    // MARK: - 使用说明（surface 卡片 + border）
 
     private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("使用说明")
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("• 启用全局快捷键后，App 将驻留菜单栏（Dock 图标隐藏）")
                 Text("• 在 Finder 中选中文件，按对应快捷键即可触发")
                 Text("• 默认快捷键：⌥⇧C 快速压缩 / ⌥⇧I 压缩为… / ⌥⇧N 新建文件夹弹窗")
                 Text("• 建议使用 ⌥⇧ 组合，避免与系统快捷键冲突")
                 Text("• 服务菜单作为备用入口仍可使用")
             }
-            .font(.system(size: 12, weight: .regular))
+            .font(.system(size: 13, weight: .regular))
             .foregroundStyle(Color.appleSoft)
-            .padding(14)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
     // MARK: - 录制键盘事件
 
     private func installRecorder() {
-        // 移除上次未清理的 monitor
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
-        // 用 NSEvent local monitor 监听 App 内按键（设置窗口内按键）
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             guard self.recordingId != nil else { return event }
             return self.handleKeyEvent(event) ? nil : event
@@ -331,7 +351,6 @@ struct HotKeySettingsView: View {
     }
 
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Esc 取消
         if event.keyCode == 53 {
             recordingId = nil
             recordedCombo = nil
@@ -339,7 +358,6 @@ struct HotKeySettingsView: View {
             return true
         }
 
-        // 至少一个修饰键
         var modifiers: UInt32 = 0
         if event.modifierFlags.contains(.command) { modifiers |= UInt32(cmdKey) }
         if event.modifierFlags.contains(.shift)   { modifiers |= UInt32(shiftKey) }
@@ -354,7 +372,6 @@ struct HotKeySettingsView: View {
         let combo = KeyCombination(keyCode: UInt32(event.keyCode), modifiers: modifiers)
         guard let actionId = recordingId else { return true }
 
-        // App 内冲突检测
         for other in HotKeyActionId.allCases where other != actionId {
             if let otherCombo = HotKeyManager.shared.currentCombination(for: other),
                otherCombo == combo {
@@ -365,7 +382,6 @@ struct HotKeySettingsView: View {
             }
         }
 
-        // 系统冲突检测
         if HotKeyManager.shared.hasConflict(combo) {
             showToast("与系统或其他应用冲突", error: true)
             recordingId = nil
@@ -373,7 +389,6 @@ struct HotKeySettingsView: View {
             return true
         }
 
-        // 保存并重新注册
         HotKeyManager.shared.saveCombination(combo, for: actionId)
         HotKeyManager.shared.registerAllFromSettings()
         StatusBarController.shared.refreshMenu()
@@ -383,8 +398,6 @@ struct HotKeySettingsView: View {
         showToast("已保存：\(combo.displayName)", error: false)
         return true
     }
-
-    // MARK: - 冲突检测
 
     private func detectConflicts() -> [String] {
         var conflicts: [String] = []
@@ -401,8 +414,6 @@ struct HotKeySettingsView: View {
         }
         return conflicts
     }
-
-    // MARK: - Toast
 
     private func showToast(_ message: String, error: Bool) {
         withAnimation { toastMessage = message; toastIsError = error }

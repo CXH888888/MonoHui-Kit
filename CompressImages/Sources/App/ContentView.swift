@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
-    case compress, datefolder, hotkey, settings
+    case compress, datefolder, hotkey, settings, about
     var id: String { rawValue }
 }
 
@@ -28,12 +28,17 @@ struct MainSplitView: View {
         NavigationSplitView {
             SidebarView(selection: $selection)
         } detail: {
-            switch selection {
-            case .compress: MainWindow()
-            case .datefolder: DateFolderView()
-            case .hotkey: HotKeySettingsView()
-            case .settings: SettingsView()
-            case nil: MainWindow()
+            // 用 ZStack 底层放不透明 canvas 背景，强制覆盖 NavigationSplitView 的系统材质背景
+            ZStack {
+                Color.appleCanvas
+                switch selection {
+                case .compress: MainWindow()
+                case .datefolder: DateFolderView()
+                case .hotkey: HotKeySettingsView()
+                case .settings: SettingsView()
+                case .about: AboutDiagnosticsView()
+                case nil: MainWindow()
+                }
             }
         }
         .frame(width: 1000, height: 800)

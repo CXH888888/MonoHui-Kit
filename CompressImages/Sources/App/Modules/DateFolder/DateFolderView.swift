@@ -16,6 +16,7 @@ struct DateFolderView: View {
             .padding(28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollContentBackground(.hidden)
         .background(Color.appleCanvas)
     }
 
@@ -30,55 +31,74 @@ struct DateFolderView: View {
         }
     }
 
-    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
+    // MARK: - Section header（13/semibold，与功能行形成层次）
 
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .tracking(0.8)
-            .textCase(.uppercase)
-            .foregroundStyle(Color.appleMuted)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.appleInk)
+    }
+
+    // MARK: - 分隔线
+
+    private var divider: some View {
+        Divider()
+            .background(Color.appleDivider)
+            .padding(.horizontal, 16)
     }
 
     private var defaultFormatsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("默认格式（右键服务菜单）")
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("默认格式")
+            Text("右键服务菜单中显示的三种日期格式")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color.appleSoft)
+                .padding(.top, -6)
 
-            VStack(spacing: 6) {
-                ForEach(DateFolderModule.defaultFormats, id: \.format) { item in
+            VStack(spacing: 0) {
+                ForEach(Array(DateFolderModule.defaultFormats.enumerated()), id: \.element.format) { index, item in
                     HStack(spacing: 12) {
                         Image(systemName: "folder")
-                            .font(.system(size: 14))
-                            .frame(width: 16, height: 16)
+                            .font(.system(size: 16))
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(Color.appleBlue)
                         Text(item.label)
-                            .font(.system(size: 13, weight: .regular))
+                            .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(Color.appleInk)
                         Spacer()
                         Text("示例: \(item.example)")
                             .font(.system(size: 13, weight: .regular, design: .monospaced))
                             .foregroundStyle(Color.appleSoft)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.appleCanvas)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    if index < DateFolderModule.defaultFormats.count - 1 {
+                        divider
+                    }
                 }
             }
-            .padding(14)
+            .padding(.vertical, 4)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
     private var customSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("自定义（影响所有日期文件夹）")
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("自定义")
+            Text("影响所有日期文件夹名称的前缀与后缀")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(Color.appleSoft)
+                .padding(.top, -6)
 
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
                     Text("前缀")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(Color.appleSoft)
                         .frame(width: 48, alignment: .leading)
                     TextField("如：项目_", text: $prefix)
@@ -88,46 +108,60 @@ struct DateFolderView: View {
                         .foregroundStyle(Color.appleSoft)
                         .frame(width: 100)
                 }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
 
-                HStack(spacing: 12) {
+                divider
+
+                HStack(spacing: 14) {
                     Text("后缀")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: 14, weight: .regular))
                         .foregroundStyle(Color.appleSoft)
                         .frame(width: 48, alignment: .leading)
                     TextField("如：_备份", text: $suffix)
                         .textFieldStyle(.roundedBorder)
                     Spacer()
                 }
-
-                Text("日期格式占位符：yy（年2位）yyyy（年4位）MM（月）dd（日）HH（时）mm（分）ss（秒）")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(Color.appleMuted)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
             }
-            .padding(16)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            Text("日期格式占位符：yy（年2位）yyyy（年4位）MM（月）dd（日）HH（时）mm（分）ss（秒）")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(Color.appleMuted)
         }
     }
 
     private var behaviorSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionHeader("新建后行为")
 
             let hasPermission = DateFolderEngine.hasAccessibilityPermission()
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Image(systemName: hasPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .font(.system(size: 14))
-                    .frame(width: 16, height: 16)
+                    .font(.system(size: 16))
+                    .frame(width: 20, height: 20)
                     .foregroundStyle(hasPermission ? .green : .orange)
                 Text(hasPermission
                      ? "已获得辅助功能权限，新建后将自动进入重命名模式"
                      : "未获得辅助功能权限，新建后将仅选中文件夹。请在系统设置 → 隐私与安全性 → 辅助功能中授权。")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
             }
             .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.appleSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 

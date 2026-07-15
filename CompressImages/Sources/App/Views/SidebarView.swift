@@ -5,28 +5,30 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 左上：功能区（主）
-            VStack(alignment: .leading, spacing: 4) {
-                sectionHeader("功能")
-                navButton(.compress, icon: "photo", label: "图片压缩")
-                navButton(.datefolder, icon: "folder", label: "日期文件夹")
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 14)
-            .padding(.bottom, 16)
-
-            Divider()
-
-            Spacer()
-
-            // 左下：设置区（次）
-            VStack(alignment: .leading, spacing: 4) {
-                sectionHeader("设置")
-                navButton(.hotkey, icon: "keyboard", label: "快捷键")
-                navButton(.settings, icon: "gearshape", label: "设置")
+            // 左上：功能区（主）— 按钮更大、更重
+            VStack(alignment: .leading, spacing: 6) {
+                primarySectionHeader("功能")
+                navButton(.compress, icon: "photo", label: "图片压缩", isPrimary: true)
+                navButton(.datefolder, icon: "folder", label: "日期文件夹", isPrimary: true)
             }
             .padding(.horizontal, 12)
             .padding(.top, 16)
+            .padding(.bottom, 18)
+
+            Spacer()
+
+            // 分割线移到「设置」小标题上方
+            Divider()
+                .padding(.horizontal, 12)
+
+            // 左下：设置区（次）— 更小、更轻
+            VStack(alignment: .leading, spacing: 2) {
+                navButton(.hotkey, icon: "keyboard", label: "快捷键", isPrimary: false)
+                navButton(.settings, icon: "gearshape", label: "设置", isPrimary: false)
+                navButton(.about, icon: "info.circle", label: "关于与诊断", isPrimary: false)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 14)
             .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -34,22 +36,33 @@ struct SidebarView: View {
         .navigationSplitViewColumnWidth(200)
     }
 
-    // MARK: - Section header（micro 样式：11/500/uppercase/0.066em tracking）
+    // MARK: - 功能区 section header（更显著）
 
-    private func sectionHeader(_ text: String) -> some View {
+    private func primarySectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .tracking(0.3)
+            .foregroundStyle(Color.appleInk)
+            .padding(.leading, 10)
+            .padding(.bottom, 2)
+    }
+
+    // MARK: - 设置区 section header（micro 样式）
+
+    private func secondarySectionHeader(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .medium))
             .tracking(0.8)
             .textCase(.uppercase)
             .foregroundStyle(Color.appleMuted)
             .padding(.leading, 10)
-            .padding(.top, 4)
-            .padding(.bottom, 2)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
     }
 
-    // MARK: - 导航按钮（统一 34pt 高，icon 14+text 13）
+    // MARK: - 导航按钮（isPrimary 区分主次）
 
-    private func navButton(_ item: SidebarItem, icon: String, label: String) -> some View {
+    private func navButton(_ item: SidebarItem, icon: String, label: String, isPrimary: Bool) -> some View {
         let isSelected = selection == item
         return Button {
             selection = item
@@ -58,23 +71,23 @@ struct SidebarView: View {
                 // 左侧选中强调条
                 RoundedRectangle(cornerRadius: 2)
                     .fill(isSelected ? Color.appleBlue : Color.clear)
-                    .frame(width: 3, height: 18)
-                    .padding(.trailing, 8)
-                HStack(spacing: 9) {
+                    .frame(width: 3, height: isPrimary ? 20 : 14)
+                    .padding(.trailing, isPrimary ? 10 : 8)
+                HStack(spacing: isPrimary ? 10 : 8) {
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .regular))
-                        .frame(width: 16, height: 16)
+                        .font(.system(size: isPrimary ? 16 : 13, weight: .regular))
+                        .frame(width: isPrimary ? 18 : 15, height: isPrimary ? 18 : 15)
                         .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
                     Text(label)
-                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                        .font(.system(size: isPrimary ? 14 : 12, weight: isSelected ? .semibold : .regular))
                         .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
                     Spacer()
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-            .padding(.horizontal, 8)
-            .background(isSelected ? Color.appleBlue.opacity(0.10) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .frame(maxWidth: .infinity, minHeight: isPrimary ? 40 : 28, alignment: .leading)
+            .padding(.horizontal, isPrimary ? 10 : 8)
+            .background(isSelected ? Color.appleBlue.opacity(isPrimary ? 0.12 : 0.10) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: isPrimary ? 8 : 7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

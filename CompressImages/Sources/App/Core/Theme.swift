@@ -15,12 +15,14 @@ extension Color {
     static let appleSoft = dynamic(light: Color(red: 0.431, green: 0.431, blue: 0.451),
                                    dark: Color(red: 0.631, green: 0.631, blue: 0.651))
     static let appleMuted = Color(red: 0.525, green: 0.525, blue: 0.545)
-    static let appleSurface = dynamic(light: Color(red: 0.98, green: 0.98, blue: 0.988),
-                                      dark: Color(red: 0.11, green: 0.11, blue: 0.122))
-    static let appleSurface2 = dynamic(light: Color(red: 0.961, green: 0.961, blue: 0.969),
+    static let appleSurface = dynamic(light: Color.white.opacity(0.05),
+                                      dark: Color.white.opacity(0.05))
+    static let appleSurface2 = dynamic(light: Color(red: 0.85, green: 0.85, blue: 0.865),
                                        dark: Color(red: 0.173, green: 0.173, blue: 0.18))
     static let appleCanvas = dynamic(light: .white,
                                      dark: Color(red: 0.11, green: 0.11, blue: 0.12))
     static let appleBorder = dynamic(light: Color.black.opacity(0.16),
                                      dark: Color.white.opacity(0.16))
+    static let appleDivider = dynamic(light: Color.black.opacity(0.10),
+                                      dark: Color.white.opacity(0.10))
 }

@@ -102,9 +102,9 @@ with open('$CHANGELOG_FILE', 'r', encoding='utf-8') as f:
 m = re.search(r'^## \[未发布\][^\n]*\n(.*?)(?=^## \[)', content, re.MULTILINE | re.DOTALL)
 if m:
     body = m.group(1).strip()
-    # 过滤掉占位文案，看是否还有实际内容
+    # 过滤掉占位文案和分割线，看是否还有实际内容
     placeholder = '（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）'
-    body = body.replace(placeholder, '').strip()
+    body = body.replace(placeholder, '').replace('---', '').strip()
     print(body)
 " 2>/dev/null || echo "")"
 
@@ -119,7 +119,10 @@ import sys, re
 path, version, today = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
-new_unreleased = "## [未发布]\n\n（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）\n\n"
+placeholder = "（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）"
+# 先去掉全文所有占位文案（它只应存在于新的 [未发布] 区块，后面会重新写入）
+content = content.replace(placeholder + "\n\n", "").replace("\n\n" + placeholder, "")
+new_unreleased = "## [未发布]\n\n" + placeholder + "\n\n---\n\n"
 pattern = re.compile(r'^## \[未发布\][^\n]*\n', re.MULTILINE)
 if pattern.search(content):
     replacement = new_unreleased + "## [v" + version + "] - " + today + "\n"
