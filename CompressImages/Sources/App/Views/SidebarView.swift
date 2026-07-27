@@ -54,26 +54,19 @@ struct SidebarView: View {
         return Button {
             selection = item
         } label: {
-            HStack(spacing: 0) {
-                // 左侧选中强调条
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(isSelected ? Color.appleBlue : Color.clear)
-                    .frame(width: 3, height: isPrimary ? 20 : 14)
-                    .padding(.trailing, isPrimary ? 10 : 8)
-                HStack(spacing: isPrimary ? 10 : 8) {
-                    Image(systemName: icon)
-                        .font(.system(size: isPrimary ? 16 : 13, weight: .regular))
-                        .frame(width: isPrimary ? 18 : 15, height: isPrimary ? 18 : 15)
-                        .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
-                    Text(label)
-                        .font(.system(size: isPrimary ? 14 : 12, weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
-                    Spacer()
-                }
+            HStack(spacing: isPrimary ? 10 : 8) {
+                Image(systemName: icon)
+                    .font(.system(size: isPrimary ? 16 : 13, weight: .regular))
+                    .frame(width: isPrimary ? 18 : 15, height: isPrimary ? 18 : 15)
+                    .foregroundStyle(isSelected ? Color.white : Color.appleInk)
+                Text(label)
+                    .font(.system(size: isPrimary ? 14 : 12, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Color.white : Color.appleInk)
+                Spacer()
             }
             .frame(maxWidth: .infinity, minHeight: isPrimary ? 40 : 28, alignment: .leading)
             .padding(.horizontal, isPrimary ? 10 : 8)
-            .background(isSelected ? Color.appleBlue.opacity(isPrimary ? 0.12 : 0.10) : Color.clear)
+            .background(isSelected ? Color.appleBlue : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: isPrimary ? 8 : 7))
             .contentShape(Rectangle())
         }
