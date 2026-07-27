@@ -9,6 +9,9 @@
 ### 修复
 - `scripts/build-dmg.sh` 旧 dmg 挂载残留时打包失败：原脚本固定挂载到 `/Volumes/QuickActions`，与已挂载卷冲突时报「资源忙」。改为让 `hdiutil attach` 自动分配挂载点名（如 `/Volumes/QuickActions 2`），并用 `grep -oE` 正确解析带空格的挂载点和 device，卸载时用 device 强制 eject
 
+### 变更
+- `scripts/build-dmg.sh` 增加标准拖拽安装布局：用 `osascript` 控制 Finder 设置 icon view、96px 图标大小，`QuickActions.app` 在左侧 (120,160)、`Applications` 软链接在右侧 (400,160)，窗口 660×400。打包前先清理残留的 QuickActions 挂载点避免 AppleScript 找错卷
+
 ---
 
 ## [v0.7.8] - 2026-07-27
