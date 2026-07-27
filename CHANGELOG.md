@@ -6,6 +6,13 @@
 
 （开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
+### 修复
+- `scripts/build-dmg.sh` 旧 dmg 挂载残留时打包失败：原脚本固定挂载到 `/Volumes/QuickActions`，与已挂载卷冲突时报「资源忙」。改为让 `hdiutil attach` 自动分配挂载点名（如 `/Volumes/QuickActions 2`），并用 `grep -oE` 正确解析带空格的挂载点和 device，卸载时用 device 强制 eject
+
+---
+
+## [v0.7.8] - 2026-07-27
+
 ### 变更
 - 侧栏选中态对比度优化：移除左侧选中强调条与浅色背景（`Color.appleBlue.opacity(0.12)`），改为纯蓝底（`Color.appleBlue`）+ 白色文字/图标，主次按钮统一风格
 

@@ -42,17 +42,23 @@ hdiutil create \
     -format UDRW \
     "$RW_DMG_PATH" >/dev/null
 
-# 步骤 2：挂载可读写 dmg
-MOUNT_DIR=$(hdiutil attach -nobrowse -noautoopen -mountpoint /Volumes/QuickActions "$RW_DMG_PATH" | grep '/Volumes/QuickActions' | head -1 | awk '{print $NF}')
-if [ -z "$MOUNT_DIR" ]; then
-    MOUNT_DIR="/Volumes/QuickActions"
+# 步骤 2：挂载可读写 dmg（让 hdiutil 自动分配挂载点名，避免与已挂载卷冲突）
+ATTACH_OUT=$(hdiutil attach -nobrowse -noautoopen "$RW_DMG_PATH")
+# 输出格式：/dev/disk12s1  Apple_APFS  /Volumes/QuickActions 1（挂载点可能带空格）
+MOUNT_DIR=$(echo "$ATTACH_OUT" | grep -oE '/Volumes/.*$' | head -1 | sed 's/[[:space:]]*$//')
+DEV=$(echo "$ATTACH_OUT" | grep -oE '^/dev/disk[0-9]+' | head -1)
+if [ -z "$MOUNT_DIR" ] || [ -z "$DEV" ]; then
+    echo "❌ 挂载失败或解析失败"
+    echo "$ATTACH_OUT"
+    exit 1
 fi
+echo "   挂载到: $MOUNT_DIR (device: $DEV)"
 
 # 步骤 3：在挂载点创建 Applications 软链接（拖拽安装用）
 ln -s /Applications "$MOUNT_DIR/Applications"
 
-# 步骤 4：卸载
-hdiutil detach "$MOUNT_DIR" >/dev/null
+# 步骤 4：卸载（用 device 强制 eject，避免挂载点残留导致资源忙）
+hdiutil detach "$DEV" -force >/dev/null 2>&1 || hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1
 
 # 步骤 5：转换成只读压缩 dmg（UDZO）
 hdiutil convert "$RW_DMG_PATH" -format UDZO -o "$DMG_PATH" >/dev/null
