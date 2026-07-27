@@ -8,11 +8,65 @@
 
 ---
 
+## [v0.7.7] - 2026-07-27
+
+### 修复
+- `FinderSelection.swift` 的 `as!` 强制转换加 `guard let` 空值检查：AXUIElement 是 toll-free bridged，`as!` 不会崩溃但原代码缺少 nil 防护
+- `HotKeySettingsView` 的 `keyMonitor` 未在 `onDisappear` 清理：切走页面后键盘事件被持续拦截，加 `.onDisappear { stopRecorder() }`
+- `--install` / `--uninstall` 用 `try?` 吞错但打印成功提示：改为 `do-catch`，失败时打印错误并记 `AppLog` 日志
+- `DateFolderEngine.run` 创建失败完全静默：改为记 `AppLog` 错误日志 + 发送失败通知，避免"右键没反应"
+- `HotKeyManager` 解码快捷键配置损坏时静默回退默认：改为记 `AppLog` warn 日志，`saveCombination` 编码失败也记日志
+
+### 变更
+- 合并 `runQuickCompress` 重复实现：`AppState` 版本删除，统一调用 `HotKeyDispatcher.shared.runQuickCompress`，服务菜单与快捷键入口行为一致（带完整日志）
+- 提取公共 UI 组件 `SectionHeader` / `SectionDivider` 到 `Theme.swift`：4 个 View 文件的 `sectionHeader` / `divider` 改为调用公共组件
+- 提取 `AppNotification` 工具到 `Theme.swift`：`requestAuthorization` + `send` 统一入口，替换 5 处 `try? await UNUserNotificationCenter...` 和 4 处内联通知构造
+- 清理未使用代码：`SidebarView.secondarySectionHeader`、`SettingsView.appVersion`、`DateFolderView.customFormat`、`HotKeySettingsView.recordedCombo`、`DateFolderEngine.selectAndRename` 的 `parentPath`
+- `InteractivePopover` 完成按钮硬编码绿色改用 `Color.appleSuccess`：颜色统一管理，支持深色模式
+- `DateFolderEngine` 的 `selectAndRename` / `revealInFinder` / `moveItem` 的 `try?` 改为 `do-catch` 记日志
+
+---
+
+## [v0.7.6] - 2026-07-27
+
+### 变更
+- 关闭主窗口时自动切回 accessory 模式：Dock 图标隐藏、菜单栏保留常驻，App 不退出
+
+---
+
+## [v0.7.5] - 2026-07-27
+
+### 变更
+- 新建文件夹弹窗打开时默认选中「月日+线上」；标题右侧加清空按钮（↺），一键清除所有选中与输入
+
+---
+
+## [v0.7.4] - 2026-07-27
+
+### 变更
+- 新建文件夹弹窗放宽创建条件：日期/渠道/项目名称可任意组合，不再强制三项全填；日期与渠道 pill 再点一次取消选中，"其他"输入框右侧加 × 按钮可退出；文件夹名用 `-` 拼接所有非空部分
+
+---
+
+## [v0.7.3] - 2026-07-15
+
+### 修复
+- 快捷键页 toast 提示深色模式下白底白字不可见：背景从 `Color.appleInk` 改为 `Color.black.opacity(0.85)`，深浅模式下统一深底白字
+
+---
+
 ## [v0.7.1] - 2026-07-15
 
 ### 变更
 - 侧栏删除「设置」小标题
 - `appleSurface` 改用 opacity 写法（`Color.white.opacity(0.05)`），替代 RGB 灰色值，与系统材质背景交互表现更自然
+
+---
+
+## [v0.7.2] - 2026-07-15
+
+### 变更
+- 快捷键页总开关/开机自启动开关改为 `.switch` 样式（左右滑动）并右对齐，文字移到左侧
 
 ---
 

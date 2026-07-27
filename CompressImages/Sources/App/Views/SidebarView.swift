@@ -47,19 +47,6 @@ struct SidebarView: View {
             .padding(.bottom, 2)
     }
 
-    // MARK: - 设置区 section header（micro 样式）
-
-    private func secondarySectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .medium))
-            .tracking(0.8)
-            .textCase(.uppercase)
-            .foregroundStyle(Color.appleMuted)
-            .padding(.leading, 10)
-            .padding(.top, 2)
-            .padding(.bottom, 4)
-    }
-
     // MARK: - 导航按钮（isPrimary 区分主次）
 
     private func navButton(_ item: SidebarItem, icon: String, label: String, isPrimary: Bool) -> some View {

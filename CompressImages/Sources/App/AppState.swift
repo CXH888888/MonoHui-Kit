@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import SwiftUI
-import UserNotifications
 
 @Observable
 final class AppState {
@@ -162,15 +161,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--install") {
             NSApp.setActivationPolicy(.prohibited)
-            try? ServiceMenuInstaller.install(actions: ModuleRegistry.allActions)
-            print("✅ 服务菜单已启用")
+            do {
+                try ServiceMenuInstaller.install(actions: ModuleRegistry.allActions)
+                print("✅ 服务菜单已启用")
+            } catch {
+                print("❌ 服务菜单安装失败：\(error.localizedDescription)")
+                AppLog.shared.log("服务菜单安装失败：\(error)", category: "Service", level: .error)
+            }
             NSApp.terminate(nil)
             return
         }
         if args.contains("--uninstall") {
             NSApp.setActivationPolicy(.prohibited)
-            try? ServiceMenuInstaller.uninstall(actions: ModuleRegistry.allActions)
-            print("✅ 服务菜单已禁用")
+            do {
+                try ServiceMenuInstaller.uninstall(actions: ModuleRegistry.allActions)
+                print("✅ 服务菜单已禁用")
+            } catch {
+                print("❌ 服务菜单移除失败：\(error.localizedDescription)")
+                AppLog.shared.log("服务菜单移除失败：\(error)", category: "Service", level: .error)
+            }
             NSApp.terminate(nil)
             return
         }
@@ -191,36 +200,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if module == "compress" && moduleArgs["mode"] == "quick" {
             NSApp.setActivationPolicy(.prohibited)
             Task {
-                try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-                await runQuickCompress(urls: urls)
+                await AppNotification.requestAuthorization()
+                await HotKeyDispatcher.shared.runQuickCompress(urls: urls)
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await MainActor.run { NSApp.terminate(nil) }
             }
         } else if module == "datefolder" && moduleArgs["mode"] == "interactive" {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
-            Task {
-                try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-            }
+            Task { await AppNotification.requestAuthorization() }
         } else if module == "datefolder" {
             NSApp.setActivationPolicy(.prohibited)
             let format = moduleArgs["format"] ?? "yyMMdd"
             DateFolderEngine.run(urls: urls, format: format)
             Task {
-                try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                await AppNotification.requestAuthorization()
                 let prefix = UserDefaults.standard.string(forKey: "datefolder_prefix") ?? ""
                 let suffix = UserDefaults.standard.string(forKey: "datefolder_suffix") ?? "-"
                 let name = DateFolderEngine.formatName(format: format, prefix: prefix, suffix: suffix)
-                showNotification(title: "文件夹已创建", body: name)
+                AppNotification.send(title: "文件夹已创建", body: name)
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 await MainActor.run { NSApp.terminate(nil) }
             }
         } else if module == "compress" && moduleArgs["mode"] == "interactive" {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
-            Task {
-                try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-            }
+            Task { await AppNotification.requestAuthorization() }
         }
 
         let launchedByService = isLaunchedByServiceMenu
@@ -336,73 +341,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func runQuickCompress(urls: [URL]) async {
-        guard !urls.isEmpty else { return }
-
-        let engine = CompressionEngine()
-        let items = urls.map { ImageItem(url: $0) }
-
-        let defaults = UserDefaults.standard
-        let qualityRaw = defaults.string(forKey: "quickQuality") ?? QualityLevel.high.rawValue
-        let quality = QualityLevel(rawValue: qualityRaw) ?? .high
-
-        let keepOriginal = UserDefaults.standard.bool(forKey: "quickKeepOriginal")
-        var successCount = 0
-        var failCount = 0
-
-        for item in items {
-            let format: CompressionFormat
-            if keepOriginal, let detected = item.estimatedFormat {
-                format = detected
-            } else {
-                let fmtRaw = defaults.string(forKey: "quickFormat") ?? CompressionFormat.jpeg.rawValue
-                format = CompressionFormat(rawValue: fmtRaw) ?? .jpeg
-            }
-
-            let result = await engine.compressSingle(item: item, format: format, quality: quality)
-            switch result.status {
-            case .completed:
-                successCount += 1
-            case .failed:
-                failCount += 1
-            default:
-                break
-            }
-        }
-
-        showNotification(
-            title: "压缩完成",
-            body: "\(successCount) 个文件压缩成功\(failCount > 0 ? "，\(failCount) 个失败" : "")"
-        )
-    }
-
     @objc private func windowWillClose(_ notification: Notification) {
-        guard let closingWindow = notification.object as? NSWindow,
-              closingWindow.level == .screenSaver else { return }
-        // 服务菜单启动的进程：即用即走，关窗口即退出
-        // 主进程（快捷键常驻）：关窗口后重置状态，不退出（已是 accessory 不需切换）
-        if isLaunchedByServiceMenu {
-            AppLog.shared.log("服务菜单进程关窗口 → terminate", category: "App")
-            NSApp.terminate(nil)
-        } else {
-            AppLog.shared.log("常驻主进程关窗口 → 重置状态（保持 accessory）", category: "App")
-            appState.preloadedURLs = []
-            appState.module = ""
-            appState.moduleArgs = [:]
+        guard let closingWindow = notification.object as? NSWindow else { return }
+
+        if closingWindow.level == .screenSaver {
+            // 弹窗窗口关闭：服务菜单进程 terminate / 主进程重置状态
+            if isLaunchedByServiceMenu {
+                AppLog.shared.log("服务菜单进程关窗口 → terminate", category: "App")
+                NSApp.terminate(nil)
+            } else {
+                AppLog.shared.log("常驻主进程关弹窗 → 重置状态（保持 accessory）", category: "App")
+                appState.preloadedURLs = []
+                appState.module = ""
+                appState.moduleArgs = [:]
+            }
+            return
+        }
+
+        // 主窗口（.normal level）关闭：切回 accessory 模式，保留菜单栏常驻
+        // Dock 图标隐藏，但 App 不退出
+        if !isLaunchedByServiceMenu && NSApp.activationPolicy() == .regular {
+            AppLog.shared.log("主窗口关闭 → 切回 accessory 模式（Dock 隐藏，菜单栏保留）", category: "App")
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 
-    private func showNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
+    /// 防止最后一个窗口关闭时 App 自动退出（accessory 模式需要常驻）
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {

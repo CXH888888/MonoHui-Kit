@@ -35,11 +35,7 @@ struct AboutDiagnosticsView: View {
 
     // MARK: - Section header
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color.appleInk)
-    }
+    private func sectionHeader(_ text: String) -> some View { SectionHeader(text) }
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"

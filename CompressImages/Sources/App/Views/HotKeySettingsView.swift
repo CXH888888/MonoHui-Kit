@@ -6,7 +6,6 @@ struct HotKeySettingsView: View {
     @Environment(AppState.self) var state
 
     @State private var recordingId: HotKeyActionId?
-    @State private var recordedCombo: KeyCombination?
     @State private var toastMessage: String?
     @State private var toastIsError = false
     @State private var refreshTrigger = 0
@@ -34,7 +33,7 @@ struct HotKeySettingsView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(toastIsError ? Color.red.opacity(0.85) : Color.appleInk.opacity(0.85))
+                    .background(toastIsError ? Color.red.opacity(0.85) : Color.black.opacity(0.85))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.bottom, 24)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -45,6 +44,10 @@ struct HotKeySettingsView: View {
                 state.hotKeyEnabled = enabled
                 refreshTrigger += 1
             }
+        }
+        .onDisappear {
+            // 离开页面时清理 keyMonitor，防止切走后仍拦截全局键盘事件
+            stopRecorder()
         }
     }
 
@@ -61,17 +64,9 @@ struct HotKeySettingsView: View {
         }
     }
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color.appleInk)
-    }
+    private func sectionHeader(_ text: String) -> some View { SectionHeader(text) }
 
-    private var divider: some View {
-        Divider()
-            .background(Color.appleDivider)
-            .padding(.horizontal, 16)
-    }
+    private var divider: some View { SectionDivider() }
 
     // MARK: - 总开关（surface 卡片 + border）
 
@@ -79,17 +74,6 @@ struct HotKeySettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("总开关")
             HStack(spacing: 14) {
-                Toggle("", isOn: Binding(
-                    get: { state.hotKeyEnabled },
-                    set: { newValue in
-                        state.hotKeyEnabled = newValue
-                        refreshTrigger += 1
-                        showToast(newValue ? "已启用，App 驻留菜单栏" : "已禁用", error: false)
-                    }
-                ))
-                .labelsHidden()
-                .controlSize(.large)
-
                 VStack(alignment: .leading, spacing: 3) {
                     Text(state.hotKeyEnabled ? "已启用" : "未启用")
                         .font(.system(size: 15, weight: .semibold))
@@ -100,6 +84,17 @@ struct HotKeySettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
+                Toggle("", isOn: Binding(
+                    get: { state.hotKeyEnabled },
+                    set: { newValue in
+                        state.hotKeyEnabled = newValue
+                        refreshTrigger += 1
+                        showToast(newValue ? "已启用，App 驻留菜单栏" : "已禁用", error: false)
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.large)
             }
             .padding(16)
             .background(Color.appleSurface)
@@ -119,6 +114,15 @@ struct HotKeySettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("开机自启动")
             HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("开机自启动")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.appleInk)
+                    Text("开机后自动驻留菜单栏，快捷键随时可用")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(Color.appleSoft)
+                }
+                Spacer()
                 Toggle("", isOn: Binding(
                     get: { launchAtLoginEnabled },
                     set: { newValue in
@@ -131,17 +135,8 @@ struct HotKeySettingsView: View {
                     }
                 ))
                 .labelsHidden()
+                .toggleStyle(.switch)
                 .controlSize(.large)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("开机自启动")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleInk)
-                    Text("开机后自动驻留菜单栏，快捷键随时可用")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                Spacer()
             }
             .padding(16)
             .background(Color.appleSurface)
@@ -239,7 +234,6 @@ struct HotKeySettingsView: View {
             if isRecording {
                 Button("取消") {
                     recordingId = nil
-                    recordedCombo = nil
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 13, weight: .regular))
@@ -247,7 +241,6 @@ struct HotKeySettingsView: View {
             } else {
                 Button("录制") {
                     recordingId = actionId
-                    recordedCombo = nil
                     installRecorder()
                 }
                 .buttonStyle(.plain)
@@ -353,7 +346,6 @@ struct HotKeySettingsView: View {
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
         if event.keyCode == 53 {
             recordingId = nil
-            recordedCombo = nil
             stopRecorder()
             return true
         }

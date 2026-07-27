@@ -62,7 +62,6 @@ struct DateFolderEngine {
 
     static func selectAndRename(_ url: URL) {
         let path = url.path
-        let parentPath = url.deletingLastPathComponent().path
 
         let script = """
         tell application "Finder"
@@ -78,16 +77,24 @@ struct DateFolderEngine {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         task.arguments = ["-e", script]
-        try? task.run()
-        task.waitUntilExit()
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            AppLog.shared.log("selectAndRename 启动 osascript 失败: \(error)", category: "DateFolder", level: .error)
+        }
     }
 
     static func revealInFinder(_ url: URL) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         task.arguments = ["-R", url.path]
-        try? task.run()
-        task.waitUntilExit()
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            AppLog.shared.log("revealInFinder 启动 open 失败: \(error)", category: "DateFolder", level: .error)
+        }
     }
 
     static func hasAccessibilityPermission() -> Bool {
@@ -111,7 +118,11 @@ struct DateFolderEngine {
                 revealInFinder(createdURL)
             }
         } catch {
-            // 创建失败，静默退出
+            AppLog.shared.log("DateFolderEngine.run 创建失败 format=\(format) dir=\(directory.path) error=\(error)", category: "DateFolder", level: .error)
+            // 通知用户失败原因，避免"右键没反应"的困惑
+            DispatchQueue.main.async {
+                AppNotification.send(title: "新建文件夹失败", body: error.localizedDescription)
+            }
         }
     }
 
@@ -133,7 +144,11 @@ struct DateFolderEngine {
                 let dest = createdURL.appendingPathComponent(url.lastPathComponent)
                 // 目标已存在时跳过，避免抛错中断后续文件
                 guard !FileManager.default.fileExists(atPath: dest.path) else { continue }
-                try? FileManager.default.moveItem(at: url, to: dest)
+                do {
+                    try FileManager.default.moveItem(at: url, to: dest)
+                } catch {
+                    AppLog.shared.log("移入文件失败 \(url.lastPathComponent): \(error)", category: "DateFolder", level: .warn)
+                }
             }
         }
 

@@ -41,11 +41,7 @@ struct SettingsView: View {
 
     // MARK: - 分隔线
 
-    private var divider: some View {
-        Divider()
-            .background(Color.appleDivider)
-            .padding(.horizontal, 16)
-    }
+    private var divider: some View { SectionDivider() }
 
     // MARK: - 权限（surface 卡片 + border，功能行用 divider 分隔）
 
@@ -207,15 +203,7 @@ struct SettingsView: View {
 
     // MARK: - Section header（13/semibold，与功能行形成层次）
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color.appleInk)
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"
-    }
+    private func sectionHeader(_ text: String) -> some View { SectionHeader(text) }
 
     private func refreshStatus() {
         installedActions = Set(ModuleRegistry.allActions.filter { ServiceMenuInstaller.isInstalled($0) }.map { $0.id })

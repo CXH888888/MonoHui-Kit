@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 extension Color {
     static func dynamic(light: Color, dark: Color) -> Color {
@@ -25,4 +26,55 @@ extension Color {
                                      dark: Color.white.opacity(0.16))
     static let appleDivider = dynamic(light: Color.black.opacity(0.10),
                                       dark: Color.white.opacity(0.10))
+    static let appleSuccess = dynamic(light: Color(red: 0.11, green: 0.51, blue: 0.22),
+                                      dark: Color(red: 0.30, green: 0.69, blue: 0.35))
+}
+
+// MARK: - 公共 UI 组件（section header / divider）
+
+/// 设置页 section header：13/semibold，与功能行形成层次
+struct SectionHeader: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.appleInk)
+    }
+    init(_ text: String) { self.text = text }
+}
+
+/// section 内分隔线：左右各留 16 padding
+struct SectionDivider: View {
+    var body: some View {
+        Divider()
+            .background(Color.appleDivider)
+            .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - 通知工具
+
+enum AppNotification {
+    /// 请求通知权限（失败仅记日志）
+    static func requestAuthorization() async {
+        do {
+            try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        } catch {
+            AppLog.shared.log("通知权限请求失败：\(error)", category: "Notify", level: .warn)
+        }
+    }
+
+    /// 发送本地通知
+    static func send(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let req = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(req)
+    }
 }

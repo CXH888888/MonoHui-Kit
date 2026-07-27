@@ -1,14 +1,13 @@
 import SwiftUI
-import UserNotifications
 
 struct DateFolderPopover: View {
     @Environment(AppState.self) var state
 
-    // 日期格式 pill（决定底部时间标签的显示格式）
-    @State private var dateFormat: String = "MMdd"  // 默认月日
+    // 日期格式 pill（默认月日，空字符串 = 未选中）
+    @State private var dateFormat: String = "MMdd"
 
-    // 渠道 pill（记忆上次选择）：线上/线下/其他
-    @AppStorage("datefolder_interactive_channel") private var channel: String = "线上"
+    // 渠道 pill（默认线上，空字符串 = 未选中）：线上/线下/其他
+    @State private var channel: String = "线上"
     // "其他"被选中时，用户自定义的渠道文本（持久化，切回"其他"时保留）
     @AppStorage("datefolder_interactive_custom_channel") private var customChannel: String = ""
 
@@ -50,14 +49,18 @@ struct DateFolderPopover: View {
     private let channels = ["线上", "线下", "其他"]
 
     private var dateLabel: String {
-        DateFolderEngine.formatName(format: dateFormat, prefix: "", suffix: "")
+        dateFormat.isEmpty ? "" : DateFolderEngine.formatName(format: dateFormat, prefix: "", suffix: "")
     }
     /// 实际用于命名的渠道值：选"其他"时取 customChannel，否则取 channel
     private var effectiveChannel: String {
-        channel == "其他" ? customChannel : channel
+        if channel.isEmpty { return "" }
+        return channel == "其他" ? customChannel : channel
     }
+    /// 最终文件夹名：用 - 拼接所有非空部分（日期 / 渠道 / 项目名称）
     private var finalName: String {
-        "\(dateLabel)-\(effectiveChannel)-\(namePart)"
+        [dateLabel, effectiveChannel, namePart]
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
     }
 
     var body: some View {
@@ -103,6 +106,20 @@ struct DateFolderPopover: View {
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Color.appleInk)
             Spacer()
+            // 清空按钮：清除日期/渠道选中 + 名称输入
+            Button {
+                dateFormat = ""
+                channel = ""
+                namePart = ""
+                customChannelFocused = false
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.appleSoft)
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .help("清空所有选中与输入")
         }
     }
 
@@ -117,7 +134,10 @@ struct DateFolderPopover: View {
                     PillButton(
                         label: item.label,
                         isSelected: dateFormat == item.format,
-                        action: { dateFormat = item.format }
+                        action: {
+                            // 再点一次取消选中
+                            dateFormat = (dateFormat == item.format) ? "" : item.format
+                        }
                     )
                 }
                 Spacer(minLength: 0)
@@ -128,16 +148,18 @@ struct DateFolderPopover: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleSoft)
                     .frame(width: 28, alignment: .leading)
-                // 线上 / 线下
+                // 线上 / 线下（再点一次取消选中）
                 ForEach(["线上", "线下"], id: \.self) { ch in
                     PillButton(
                         label: ch,
                         isSelected: channel == ch,
-                        action: { channel = ch }
+                        action: {
+                            channel = (channel == ch) ? "" : ch
+                        }
                     )
                 }
-                // "其他" pill：未选中时是普通 pill（带编辑 icon 提示可自定义），
-                // 选中时变成内联输入框（灰底蓝描边，直接在 pill 位置编辑）
+                // "其他" pill：未选中时是普通 pill，
+                // 选中时变成内联输入框（灰底蓝描边，右侧 × 按钮可退出"其他"）
                 if channel == "其他" {
                     HStack(spacing: 4) {
                         Image(systemName: "pencil")
@@ -152,6 +174,17 @@ struct DateFolderPopover: View {
                             .onSubmit {
                                 create()
                             }
+                        // × 退出"其他"，回到未选状态
+                        Button {
+                            channel = ""
+                            customChannelFocused = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Color.appleSoft)
+                                .frame(width: 14, height: 14)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -188,16 +221,16 @@ struct DateFolderPopover: View {
                 .foregroundStyle(Color.appleInk)
 
             HStack(spacing: 6) {
-                // 时间标签（只读）
-                Text(dateLabel)
+                // 时间标签（只读，未选日期时显示占位）
+                Text(dateLabel.isEmpty ? "日期" : dateLabel)
                     .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Color.appleInk)
+                    .foregroundStyle(dateLabel.isEmpty ? Color.appleSoft : Color.appleInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                // 渠道标签（只读）：显示实际生效的渠道值（选"其他"时为 customChannel）
+                // 渠道标签（只读，未选渠道时显示占位）
                 Text(effectiveChannel.isEmpty ? "渠道" : effectiveChannel)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(effectiveChannel.isEmpty ? Color.appleSoft : Color.appleInk)
@@ -230,9 +263,9 @@ struct DateFolderPopover: View {
             Text("预览:")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Color.appleMuted)
-            Text(namePart.isEmpty ? "\(dateLabel)-\(effectiveChannel)-" : finalName)
+            Text(finalName.isEmpty ? "（至少选择一项）" : finalName)
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(Color.appleSoft)
+                .foregroundStyle(finalName.isEmpty ? Color.appleMuted : Color.appleSoft)
             Spacer()
         }
     }
@@ -271,7 +304,7 @@ struct DateFolderPopover: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(.return, modifiers: [])
-        .disabled(isCreating || namePart.isEmpty || effectiveChannel.isEmpty)
+        .disabled(isCreating || finalName.isEmpty)
     }
 
     private func create() {
@@ -301,7 +334,7 @@ struct DateFolderPopover: View {
                 }
                 await MainActor.run {
                     let bodySuffix = shouldMove ? "（已移入 \(selectedFileCount) 个文件）" : ""
-                    sendNotification(title: "文件夹已创建", body: name + bodySuffix)
+                    AppNotification.send(title: "文件夹已创建", body: name + bodySuffix)
                     // 注意：不在这里释放锁也不重置 isCreating
                     // 因为窗口 0.6s 后才关，这期间用户再按回车会再次触发 create()
                     // 锁延迟到窗口关闭时释放，防止 0.6s 窗口期内重复创建
@@ -325,18 +358,5 @@ struct DateFolderPopover: View {
                 }
             }
         }
-    }
-
-    private func sendNotification(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        let req = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(req)
     }
 }

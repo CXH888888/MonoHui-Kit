@@ -3,7 +3,6 @@ import SwiftUI
 struct DateFolderView: View {
     @AppStorage("datefolder_prefix") private var prefix = ""
     @AppStorage("datefolder_suffix") private var suffix = "-"
-    @State private var customFormat = ""
 
     var body: some View {
         ScrollView {
@@ -33,19 +32,11 @@ struct DateFolderView: View {
 
     // MARK: - Section header（13/semibold，与功能行形成层次）
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color.appleInk)
-    }
+    private func sectionHeader(_ text: String) -> some View { SectionHeader(text) }
 
     // MARK: - 分隔线
 
-    private var divider: some View {
-        Divider()
-            .background(Color.appleDivider)
-            .padding(.horizontal, 16)
-    }
+    private var divider: some View { SectionDivider() }
 
     private var defaultFormatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {

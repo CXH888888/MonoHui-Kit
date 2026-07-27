@@ -194,6 +194,12 @@ final class HotKeyManager {
                let decoded = try? JSONDecoder().decode(KeyCombination.self, from: data) {
                 combo = decoded
                 source = "UserDefaults"
+            } else if let data = UserDefaults.standard.data(forKey: actionId.userDefaultsKey) {
+                // 有数据但解码失败：配置损坏，记日志并回退默认
+                AppLog.shared.log("\(actionId.rawValue) 配置损坏，回退默认值", category: "HotKey", level: .warn)
+                let def = defaultCombination(for: actionId)!
+                combo = def
+                source = "默认值（配置损坏）"
             } else if let def = defaultCombination(for: actionId) {
                 combo = def
                 source = "默认值"
@@ -232,8 +238,11 @@ final class HotKeyManager {
     }
 
     func saveCombination(_ combo: KeyCombination, for id: HotKeyActionId) {
-        if let data = try? JSONEncoder().encode(combo) {
+        do {
+            let data = try JSONEncoder().encode(combo)
             UserDefaults.standard.set(data, forKey: id.userDefaultsKey)
+        } catch {
+            AppLog.shared.log("保存快捷键失败 \(id.rawValue): \(error)", category: "HotKey", level: .error)
         }
     }
 

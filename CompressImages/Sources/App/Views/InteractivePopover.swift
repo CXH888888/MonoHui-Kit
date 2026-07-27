@@ -1,5 +1,4 @@
 import SwiftUI
-import UserNotifications
 
 struct InteractivePopover: View {
     @Environment(AppState.self) var state
@@ -140,7 +139,7 @@ struct InteractivePopover: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 44)
-            .background(isCompressing ? Color.appleBlue.opacity(0.7) : (showResult ? Color(red: 0.11, green: 0.51, blue: 0.22) : Color.appleBlue))
+            .background(isCompressing ? Color.appleBlue.opacity(0.7) : (showResult ? Color.appleSuccess : Color.appleBlue))
             .clipShape(RoundedRectangle(cornerRadius: 980))
             .contentShape(Rectangle())
         }
@@ -185,16 +184,7 @@ struct InteractivePopover: View {
                 if successCount > 0 {
                     // 仅成功时设 showResult，全失败时保持 false 让用户能重试
                     showResult = true
-                    let content = UNMutableNotificationContent()
-                    content.title = "压缩完成"
-                    content.body = "\(successCount) 个文件已压缩"
-                    content.sound = .default
-                    let req = UNNotificationRequest(
-                        identifier: UUID().uuidString,
-                        content: content,
-                        trigger: nil
-                    )
-                    UNUserNotificationCenter.current().add(req)
+                    AppNotification.send(title: "压缩完成", body: "\(successCount) 个文件已压缩")
                 }
                 // 压缩成功后 0.6s 自动关弹窗（全失败时不关，保留状态供查看）
                 // 注意：锁和 isCompressing 延迟到窗口关闭时才重置，防止 0.6s 窗口期内重复触发
