@@ -20,6 +20,9 @@ extension Color {
                                       dark: Color.white.opacity(0.05))
     static let appleSurface2 = dynamic(light: Color(red: 0.85, green: 0.85, blue: 0.865),
                                        dark: Color(red: 0.173, green: 0.173, blue: 0.18))
+    // 比 appleSurface2 更深一档（对应苹果 systemGray3）
+    static let appleSurface3 = dynamic(light: Color(red: 0.78, green: 0.78, blue: 0.8),
+                                       dark: Color(red: 0.15, green: 0.15, blue: 0.15))
     static let appleCanvas = dynamic(light: .white,
                                      dark: Color(red: 0.11, green: 0.11, blue: 0.12))
     static let appleBorder = dynamic(light: Color.black.opacity(0.16),

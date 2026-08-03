@@ -6,10 +6,225 @@
 
 （开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
+---
+
+## [v1.3.6] - 2026-07-30
+
+### 修复
+- PDF 被错误标记为已转换：`addItems` 中矢量格式（PDF/SVG）走 `TransformEngine.transform` 返回原 url（不转换），但 `transformFormat` 仍被设为规则格式（如 SVG），导致 UI 显示错误格式 badge。修复：只有 `transformed != item.url`（真正发生转换）时才更新 url 和 transformFormat，否则清除 converting 状态
+- PDF 文件无预览缩略图：`loadThumbnail` 用 `NSImage(contentsOf:)` 加载，PDF 无法被正确解析；且 `item.isImage` 判断不含 PDF，直接 return。修复：`loadThumbnail` 支持 PDF（用 `CGPDFDocument` + `CGContext.drawPDFPage` 渲染第一页为 NSImage）；`isImage || fileExtension == "pdf"` 才加载预览
+
+---
+
+## [v1.3.5] - 2026-07-30
+
+### 修复
+- AI 拖入无反应（终极修复）：借鉴 Yoink 的"接收一切"策略，重写 `handleDrop` 数据加载逻辑。新增 `bestUTI(for:)` 方法遍历 provider 注册的所有 UTI，用 `UTType.preferredFilenameExtension` 确定文件扩展名，加载原始数据保存为对应格式文件。不再硬编码 UTI 列表，不管 AI/PS/Figma 拖出什么类型（SVG/PDF/PNG/AI 原生/文本）都能正确处理。文本类型额外检测 SVG（`<svg` 开头）保存为 .svg
+- 拖动检测放宽：`handleDragEvent` 改为只要 `dragPboard.types` 非空即触发显示（之前只检查文件 URL/图片/PDF，AI 拖出的数据类型无法被识别）
+
+### 变更
+- 恢复 AppRules（不同 app 不同默认格式）：移除 `scale` 字段（不再支持 1x/2x 缩放），保留按源应用 bundleId 匹配规则。默认规则：PS→PNG、AI→SVG、Figma→SVG、Sketch→SVG
+- `TransformEngine` 简化：移除 scale 缩放逻辑，SVG/PDF 矢量格式不转换原样保留，PNG/JPG 按目标格式转换保留原始尺寸
+- 设置页恢复"应用规则" section：移除 scale Picker，格式选项增加 SVG/PDF
+
+---
+
+## [v1.3.3] - 2026-07-30
+
+### 修复
+- AI/PS 拖入面板不显示：`handleDragEvent` 只检查文件 URL 和 NSImage，AI 拖出的数据类型无法被 `canReadObject` 识别。修复：改为检查 `dragPboard.types` 中是否包含 image/pdf/tiff/png/file-url 等已知类型
+- `handleDrop` 增加诊断日志：打印每个 provider 的 `registeredTypeIdentifiers`，便于排查应用拖入问题；增加兜底分支：未知类型尝试加载原始数据保存为 .dat 文件
+
+### 变更
+- 暂存逻辑简化：移除 AppRules 按"源应用"自动转换的 1x/2x 规则，改为全局"默认保存格式"设置（原格式/PNG/JPG），拖入图片时按此格式自动转换但**保留原始尺寸不缩放**。`ShelfStore.addItems` 用 `defaultSaveFormat` 替代 `AppRules.rule(for:)`；`compressItem` 手动转换也改为按默认格式（不缩放）；设置页用"默认保存格式" Picker 替换"应用规则" section
+
+---
+
+## [v1.3.2] - 2026-07-30
+
+### 修复
+- AI 拖入走错分支：AI 拖出的数据同时声明 `public.image` 和 `public.pdf`，原代码先检查 image 走 `loadObject(ofClass: NSImage.self)` 但 AI 拖出的是矢量数据无法转 NSImage 导致静默失败。修复：调整检查顺序，PDF 优先于 image（与 Yoink 保存为 PDF 的行为一致）
+
+---
+
+## [v1.3.1] - 2026-07-30
+
+### 修复
+- PS/AI 等应用拖入无反应（根因）：Adobe 应用拖出的是图片/PDF 数据（`public.image`/`public.pdf`）而非 file URL，原 `handleDrop` 只处理 `public.file-url`/`public.url`/`public.data` 且都试图解析为 URL，数据无法解析为 URL 导致 `urls` 数组为空。同时 `handleDragEvent` 的拖动检测用 `canReadObject(forClasses: [NSURL.self], .urlReadingFileURLsOnly: true)` 只检查文件 URL，PS/AI 拖出数据不包含文件 URL 导致面板根本不显示。修复：`handleDrop` 增加 `public.image`（用 `loadObject(ofClass: NSImage.self)` 加载，转 PNG 保存到 cacheDir）和 `public.pdf`（加载 Data 保存到 cacheDir）分支；`handleDragEvent` 增加 `NSImage` 和 `.pdf` 类型检测；`.onDrop` 注册类型增加 `.image`/`.pdf`；`ShelfStore` 新增 `saveDataToCache(data:fileExtension:sourceBundleId:)` 把数据保存为临时文件
+
+---
+
+## [v1.3.0] - 2026-07-30
+
+### 修复
+- 跨屏穿过（alpha 淡出速度优化）：v1.2.9 的同步 alphaValue 淡出（0.35s）面板还没完全透明就滑到其他屏幕。改为 alpha 快速淡出（0.2s）比 setFrame 滑出（0.25-0.35s）快，面板在滑出屏幕边缘前就完全透明，其他屏幕看不到它
+
+---
+
+## [v1.2.9] - 2026-07-30
+
+### 修复
+- 跨屏穿过（根因）：面板在右侧屏向左滑出隐藏时，滑出位置落在左侧相邻屏幕区域内，导致面板"从别的屏幕穿过来"。修复：所有滑出/滑入动画统一同步 `alphaValue` 淡出/淡入（1→0 / 0→1），面板向左滑出时同步变透明，其他屏幕看不到它。影响范围：`showPanel`/`hidePanel`/`relocatePanel`/`minimize`/`peekExpand`/`peekCollapse`/`relocateMinimized`
+
+---
+
+## [v1.2.8] - 2026-07-30
+
+### 修复
+- tooltip hover 反应慢：去掉 0.5s 延迟，鼠标 hover 立即显示 tooltip
+- 跨屏闪烁（最小化模式）：`relocateMinimized` 原来直接 `setFrame` 跳到新屏幕，横条/peek panel 经过屏幕间区域闪烁。改为 A 屏滑出 → B 屏滑入三阶段：A 屏向左滑出隐藏（0.25s easeOutExpo）→ orderOut + CATransaction 无动画定位到 B 屏隐藏位置 → B 屏从左侧滑入出现（0.35s easeOutExpo）
+
+---
+
+## [v1.2.6] - 2026-07-30
+
+### 修复
+- 选「放回原位」仍被废纸篓：`handleFileRemoval` 中 `isCacheFile` 误用 `item.sourceBundleId != nil` 判断，Finder 拖入的本地文件被误判为缓存文件强制废纸篓。改为基于 `item.originalURL` 和 URL 是否在 `cacheDir` 下判断
+- tooltip 错位：用 `NSWindow.contentView.hitTest` 精确获取鼠标下 NSView 的屏幕坐标（不用 NSViewRepresentable 会崩溃，不用 GeometryReader 坐标转换不准）。tooltip 显示在按钮右侧固定位置
+- 面板动画直接消失无滑动效果：`panel.setFrame(_:animate:true)` 与 `NSAnimationContext` 冲突导致缓动曲线不生效。所有动画改用 `panel.animator().setFrame` 显式动画
+- 跨屏闪烁：`relocatePanel` 直接调 `showPanel`，跨屏时面板经过屏幕间区域短暂可见。改为先 `orderOut` 完全隐藏，再无动画定位到新屏幕隐藏位置，再动画滑出
+- 鼠标按住左键划过误触发：`handleDragEvent` 中 `leftMouseDragged` 不区分文件拖动和普通鼠标拖动。加入 `NSPasteboard(name: .drag).canReadObject` 检查拖动粘贴板是否有文件 URL，只有文件拖动才触发显示
+
+### 变更
+- 文件真正暂存：`addItems` 中 Finder 拖入的本地文件移动到 `cacheDir`（`FileManager.moveItem`，跨卷时 copy+delete），记录 `originalURL`。`ShelfItem` 新增 `originalURL` 字段。「放回原位」调用 `moveBackToOriginal` 移动回原位置
+- 横条高度修正：`minimize`/`peekExpand`/`peekCollapse` 改用主面板实际 `panel.frame.height` 和 `panel.frame.origin.y`
+- 所有面板动画统一缓动曲线：`showPanel`/`hidePanel`/`minimize`/`peekExpand`/`peekCollapse`/`relocatePanel` 全部用 `NSAnimationContext` + `panel.animator().setFrame` + `CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)`（easeOutExpo），时长 0.35s
+
+---
+
+## [v1.2.5] - 2026-07-30
+
+### 变更
+- 最小化按钮样式优化：移除 `Color.white.opacity(0.08)` 背景和圆角裁切，改为纯图标无背景
+- pin icon 位置调整：从横条（`ShelfMinimizedBar`）移至主 panel 右上角。peek 展开时右上角按钮从「最小化」（`chevron.left.to.line`）切换为「固定」（`pin.fill`），点击 `unminimize`。`ShelfView` 通过监听 `.shelfMinimizedChanged` 通知用 `withAnimation` 切换图标
+- 最小化/peek 动画曲线优化：`easeInEaseOut` → 自定义 `CAMediaTimingFunction(controlPoints: 0.25, 0.1, 0.25, 1)`，时长 0.25s → 0.3s，更丝滑
+- tooltip 位置改为按钮右侧固定：用 `GeometryReader` + `ButtonFramePreferenceKey` 获取按钮在窗口坐标系下的 frame，hover 触发时通过查找 `ShelfPanel` 窗口 `frame.origin` 转换为屏幕坐标，tooltip 显示在按钮 `maxX + 6` 右侧垂直居中（不再跟随鼠标）
+
+### 修复
+- 最小化/peek 模式下不跟随屏幕焦点：`handleGlobalMouseMoved` 在 `isMinimized` 时增加屏幕切换检测，新增 `relocateMinimized(to:)` 方法让横条/peek 主 panel 跟随鼠标切换屏幕
+
+---
+
+## [v1.2.3] - 2026-07-30
+
+### 修复
+- 文件暂存箱开启后崩溃（`EXC_BREAKPOINT`/`SIGTRAP`）：`HoverTooltipButton` 中新增的 `ButtonViewLocator`（`NSViewRepresentable`）在 `ShelfView` 首次渲染时触发 `NSHostingView.viewDidMoveToWindow` → `updateRequiredBridges` → `PairPreferenceCombiner` 栈溢出。移除 `ButtonViewLocator`，回退为 `NSEvent.mouseLocation` 方案（与 v1.1.8 一致），tooltip 显示在鼠标正下方居中（24×24 锚点）
+
+### 新增
+- 文件暂存箱设置页「清理」section 新增「查看缓存文件夹」按钮：点击在 Finder 中打开 `~/Library/Caches/QuickActions/Shelf` 目录，方便用户手动删除误关闭后残留的暂存图片。`ShelfStore.cacheDir` 提升为 `static let cacheDirectory` 公共属性，保持单一数据源
+- 文件暂存箱最小化（横条）模式：主面板右上角新增「最小化为横条」按钮（仅有文件时启用，图标 `chevron.left.to.line`），点击后主面板滑回屏幕左侧，仅留 10pt 宽横条（高度同面板）。横条顶部显示 `pin.fill` icon，点击可固定显示（取消最小化）。鼠标悬停横条临时滑出（peek），离开主面板与横条后缩回。新增 `ShelfMinimizedPanel` + `ShelfMinimizedBar`，`ShelfPanelController` 新增 `isMinimized`/`isPeeking` 状态机和 `minimize()`/`unminimize()`/`peekExpand()`/`peekCollapse()` 方法。peek 触发由 `NSEvent` 鼠标监听统一判断（避免 SwiftUI `.onHover` 在 panel 切换时抖动），`peekCollapse` 后 0.5s 防抖避免循环。清空文件后若处于最小化模式自动 `unminimize`
+
+---
+
+## [v1.1.8] - 2026-07-30
+
+### 修复
+- 文件暂存箱设置页改动闪退（根因：无限递归）：`refreshPanel` 调用 `panel.setFrame` 触发 `NSHostingView.updateConstraints` → SwiftUI 重新计算内容尺寸后反推窗口 frame（`_changeWindowFrameFromConstraintsIfNecessary`）→ 再触发 `setFrame`，形成无限递归导致栈溢出崩溃。修复：`setFrame` 前先设置 `hosting.preferredContentSize` 为目标尺寸，SwiftUI 不会反推窗口 frame；用 `NSAnimationContext.runAnimationGroup` 禁用动画避免动画过程中触发额外布局。同时移除 `autoHideDelay` Slider 的 `onChange`（它只影响隐藏计时器，不需要刷新面板尺寸）
+- 文件暂存箱 tooltip 错位：之前用 SwiftUI `.global` 坐标（窗口坐标）转屏幕坐标，转换逻辑有误。改为直接用 `NSEvent.mouseLocation`（屏幕坐标系）作为 tooltip 锚点，显示在鼠标右方 14pt，彻底避免坐标转换问题。移除 `HoverTooltipButton` 中的 `GeometryReader` 和 `convertToScreen` 方法
+- 文件暂存箱设置页所有 `@State` + `didSet` 改为 `@AppStorage`：`@State` 的 `didSet` 不会触发（修改的是内部 storage），导致 UserDefaults 永远不写入。影响范围：总开关、移除方式、面板宽高、自动隐藏延迟、退出清理。现全部改为 `@AppStorage` 自动双向同步 UserDefaults，UI 修改即时写入且即时生效
+- 文件暂存箱设置页总开关切换无效果：`shelfEnabled` 的 `didSet` 不触发导致 `applyShelfEnabled()` 从未调用。改为 `@AppStorage` + `.onChange(of: shelfEnabled)` 触发 `applyShelfEnabled()`
+- 文件暂存箱面板宽高/延迟设置改动无实时效果：Slider 改为 `@AppStorage` 绑定 + `.onChange` 调用 `ShelfPanelController.shared.refreshPanel()`，滑动时实时刷新面板尺寸
+- 文件暂存箱跨屏切换面板飞行问题：`relocatePanel` 之前直接 `setFrame(targetFrame, animate: true)` 从旧位置动画到新位置会跨屏飞行。改为统一调用 `showPanel`，由 `showPanel` 的「先无动画跳到新屏幕隐藏位置，再动画滑出」逻辑处理
+- 文件暂存箱 tooltip 错位：`HoverTooltipButton` 的 `anchorRect` 用 SwiftUI `.global` 坐标（窗口坐标，原点在窗口左下），但 `NSPanel.setFrame` 用屏幕坐标（原点在主屏幕左下），两者不转换导致 tooltip 位置错误。新增 `convertToScreen` 方法，通过 `NSApp.windows` 查找 `ShelfPanel` 窗口的 `frame.origin` 把窗口坐标转换为屏幕坐标
+- 文件暂存箱无文件时未完全隐藏：`hidePanel` 之前只滑到屏幕左侧外露出 `edgeBarWidth`（4pt）边缘条。改为完全移到屏幕外（`hiddenX = origin.x - panelWidth`）+ `orderOut(nil)` 完全隐藏，无文件时用户看不到任何面板痕迹
+
+### 变更
+- 文件暂存箱面板背景从 `Color.black.opacity(0.78)` 改为 `.ultraThinMaterial` 毛玻璃模糊 + `Color.black.opacity(0.55)` 黑色叠加，实现真正的背景模糊效果
+- 文件暂存箱 `showPanel` 显示逻辑重构：无论是否跨屏，统一「先无动画定位到隐藏位置 + `orderFrontRegardless` + 动画滑出到显示位置」，确保从 `orderOut` 状态唤醒和跨屏切换都有从左侧滑出的动画
+
+---
+
+## [v1.0.9] - 2026-07-30
+
+### 修复
+- 「其他」选中态和「+新增」输入态的 × 关闭按钮改用 `.overlay(alignment: .trailing)` 实现：28×28 点击热区放在 overlay 层不参与 HStack 布局计算，HStack 内只保留 14×14 图标占位，避免扩大按钮尺寸撑大窗口
+- 「其他」未选中背景色从 `Color.black.opacity(0.03)` 改为 `Color.white.opacity(0.05)`
+
+---
+
+## [v1.0.4] - 2026-07-29
+
+### 修复
+- App 启动时文件暂存箱面板闪现在屏幕可见区域：`createPanel` 先用可见位置 `rect` 调用 `orderFrontRegardless()` 再 `hidePanel` 移走，两步之间面板短暂可见。改为初始 frame 直接设置为隐藏位置（`screenFrame.origin.x - (panelWidth - edgeBarWidth)`），面板创建即处于屏幕左侧外隐藏状态，`isShown` 初始为 `false`
+- 文件暂存箱滚动时文件项悬停按钮动画掉帧：三个性能问题叠加导致卡顿。(1) `ActionButton` 每个按钮有 `.animation(.easeInOut.delay(Double(index) * 0.04))` 错峰延迟动画，鼠标划过每个 item 时 5 个按钮各自触发独立动画链；(2) `actionStack` 用 `.transition(.move(edge: .trailing).combined(with: .opacity))` 滑入动画，move transition 比 opacity 贵很多，滚动时每个 item 反复触发；(3) 外层 `.shadow` 在 `isHovered` 时从 radius 4 → 12 动画 + `offset(y: -2)` 位移动画，shadow 动画代价高。改为：transition 简化为纯 `.opacity`；移除 ActionButton 的错峰延迟动画和 `withAnimation` 包裹；移除 `offset` 浮起；shadow 半径固定 8 不做动画；外层动画时长 0.2s → 0.15s
+
+### 新增
+- 文件暂存箱面板多显示器跟随：恢复 `ShelfPanelController` 的全局 `mouseMoved` 监听（`globalMouseMonitor`），面板显示且有文件时，鼠标移动到另一屏幕会自动把面板切换到新屏幕左侧（带动画）。500ms 防抖避免屏幕边界抖动反复切换；拖动中不触发（由 `handleDragEvent` 接管）；无文件时不跟随。新增 `relocatePanel(to:animated:)` 方法封装屏幕切换逻辑
+- 文件暂存箱 Shift+点击多选：`ShelfItemView.onTapGesture` 通过 `NSEvent.modifierFlags.contains(.shift)` 区分点击方式。新增 `ShelfStore.selectSingle(id:)` 方法，普通点击清空其他选中只选当前（再次点击同一项取消选中）；Shift+点击走原 `toggleSelect(id:)` 追加/取消选中
+- 文件暂存箱顶部聚合按钮改为左对齐布局 + 右侧清空选择叉叉：`aggregateFolderButton` 由居中图标+数字改为 `HStack`：左侧蓝色按钮（图标 + 「新建文件夹」文字 + 选中数 capsule badge，内容 `alignment: .leading` 左对齐）+ 右侧 `xmark` 小按钮（点击调用 `store.clearSelection()`）。选中数 >=1 即显示（原来 >=2 才显示）
+
+### 变更
+- 文件暂存箱顶部聚合按钮显示阈值改回 `selectedIds.count >= 2`，单选时不显示聚合按钮，多选时才出现
+
+### 新增
+- 文件暂存箱所有按钮 hover 0.5s 延迟 tooltip：新增公共组件 `HoverTooltipButton<Label>` + `ShelfTooltipState` ObservableObject + `ShelfTooltipOverlay` 顶层渲染器。鼠标停留 0.5s 后在按钮右侧显示功能名称小标签。tooltip 通过 `GeometryReader` 获取按钮全局 frame，渲染在面板顶层 overlay（`ShelfView` 最外层），避免被 `ScrollView` 裁切。使用 `Task.sleep` + cancel 机制确保快速划过时不显示。已应用到所有 9 个按钮
+- 文件暂存箱 AirDrop 区域默认灰色样式：未拖入时背景为 `Color.white.opacity(0.08)` 灰色 + 白色半透明文字和图标；拖入文件时变为 `Color.appleBlue.opacity(0.85)` 蓝色背景 + 白色文字图标，并放大 1.03 倍
+
+### 修复
+- 文件暂存箱启动时面板显示在屏幕右侧且无文件不隐藏：`createPanel` 中 `orderFrontRegardless()` 让面板进入窗口服务器，即使 frame 在屏幕外，SwiftUI 异步反推或多显示器 origin 偏移会导致面板部分可见在错误位置。改为不调用 `orderFrontRegardless`，面板创建后完全不显示，等 `showPanel` 时才 `orderFrontRegardless` 显示
+- 文件暂存箱文件项选中态圆角被裁切：`labelOverlay` 没有圆角会盖住 `previewArea` 的底部圆角，且选中态 stroke 在 `previewArea` 上被 `labelOverlay` 覆盖。修复：`labelOverlay` 添加 `UnevenRoundedRectangle` 底部圆角裁切（bottomLeadingRadius=8, bottomTrailingRadius=8）；选中态 stroke 提到 ZStack 最外层 overlay
+- 文件暂存箱按钮 hover tooltip 被裁切：tooltip 之前用 `ShelfView` 的 overlay 渲染，受面板 frame（140×400）限制被裁切。改为用独立 `NSPanel`（`ShelfTooltipWindow` 单例）显示 tooltip，`.borderless` 样式 + `.floating` level + `ignoresMouseEvents`，位置跟随按钮全局 frame，显示在按钮右侧 6pt，完全不受 ShelfView frame 限制
+
+### 变更
+- 全局用户可见的「中转站」名称改为「文件暂存箱」：`ShelfView.headerView` 标题、`ShelfSettingsView.topBar` 标题、`ShelfSettingsView.mainSwitchSection` 开关文字、`StatusBarController` 菜单项文字。代码注释中的「中转站」保留不变（不影响用户）
+- 文件暂存箱拖动触发热区宽度从 20pt 改为 140pt（等于面板宽度）：拖动文件到屏幕左侧 panelWidth 范围内任意位置即触发显示面板
+
+### 新增
+- 文件暂存箱首次唤醒虚线占位：`ShelfStore` 新增 `hasHadItems` 标志（从未加入过文件时为 false）。`ShelfView` 中部 ScrollView 在 `items.isEmpty && !hasHadItems` 时显示虚线占位（`tray.and.arrow.down` 图标 + 「暂存文件」「拖入到此」文字 + 虚线边框），一旦有文件加入过就不再显示
+
+---
+
+## [v1.0.3] - 2026-07-29
+
+### 修复
+- 文件暂存箱格式标签颜色和兜底图标识别不全：`ShelfItemView` 的 `fileTypeSFSymbol` 和 `formatLabelColor` 重复定义了狭窄的扩展名集合，导致 heif/svg/webm/flac/numbers/key 等格式落入默认灰色。统一改为调用 `FileTypeClassifier.shared.sfSymbol/ext:isDirectory:` 和 `labelColor`，复用 `ShelfItem.swift` 中完整的格式分类表（图片 23 种/视频 16 种/音频 13 种/压缩 12 种/代码 30 种/文档 9 种/表格 5 种/演示 4 种）
+- `ShelfStore.compressItem` 潜在崩溃：异步闭包内通过 `items[idx]` 访问，转换期间用户移除该 item 会越界崩溃。改为完成后用 `id` 重新 `firstIndex` 查找，找不到直接 `return`
+- `ShelfStore.addItems` / `compressItem` 阻塞主线程：`TransformEngine.transform` 是 CPU 密集型图片转换但在 `Task { @MainActor in }` 同步执行，拖入多张大图时 UI 卡顿。移除 `TransformEngine.transform` 的 `@MainActor` 标注（内部仅用 CoreGraphics / FileManager 均线程安全），改用 `Task.detached(priority: .userInitiated)` 后台执行
+- `ShelfItemView.fileTypeIcon` 每次重绘都查磁盘：原为 computed property，每次 SwiftUI 重绘都调用 `NSWorkspace.shared.icon(forFile:)`。改为 `@State` 缓存 + `onAppear` 时后台加载一次
+- `ShelfItemView` AirDrop 分享已废纸篓文件：未检查文件存在就调用 `AirDropHelper.share`。新增 `FileManager.default.fileExists` 前置检查
+- `ShelfItemView.loadThumbnail` 静默失败：图片加载失败无任何日志。补充文件不存在 / 无法解析两种失败场景的 warn 日志
+- `ShelfView.handleDrop` 源应用识别时机错误：在 `group.notify` 异步回调里才读 `NSWorkspace.shared.frontmostApplication?.bundleIdentifier`，用户在文件解析期间切换应用会导致识别错误。提前到 `handleDrop` 入口立即读取
+- `ShelfPanelController` 两处 `NSScreen.screens.first!` 强制解包：headless 或异常环境下会崩溃。改为 `NSScreen.screens.first ?? NSScreen.main ?? mainScreen()` 安全兜底
+
+### 变更
+- 侧栏导航项「中转站」改名为「文件暂存箱」（`SidebarView.navButton(.shelf, label:)`）
+
+---
+
+## [v0.9.4] - 2026-07-29
+
+### 新增
+- 新建文件夹弹窗渠道行支持用户自定义渠道标签：`DateFolderPopover` 渠道行新增「+新增」虚线按钮（位于「其他」之后），点击切换为内联输入框，回车确认；新标签持久化到 `@AppStorage("datefolder_custom_channels_json")`（JSON 编码），渲染时排在「其他」之前；自定义标签 hover 时右上角浮出红色 `xmark.circle.fill` 小删除按钮，点击删除
+- 渠道行三种 pill 视觉状态区分：固定标签（线上/线下/自定义）用 `appleSurface2` 灰底色块（跟日期行一致），「其他」未选中用 `appleSurface2` 叠加 `Color.black.opacity(0.03)` 稍微变暗表示可输入入口，「+新增」用透明背景+虚线描边（`appleSoft.opacity(0.35)`）作纯辅助入口；「+新增」按钮加 `.contentShape(Rectangle())` 让整个虚线区域可点击
+- 「其他」选中输入态的 × 关闭按钮点击区域从 `14×14` 扩大到 `28×28`（图标视觉大小不变），加 `.contentShape(Rectangle())` 保证整个区域可点击
+
+---
+
+## [v0.7.9] - 2026-07-29
+
+### 新增
+- 文件中转站模块（Phase 1-5 完整实现）：左侧贴边 `NSPanel` 面板，宽度 110pt，自动隐藏（1.5s 延迟滑入，鼠标靠近左边缘滑出），不抢焦点（`non-activating panel`）
+- 中转站四角布局：左上「标题+数量 badge」（颜色随数量变化：0 灰/1-9 蓝/10+ 橙）/ 左下 ⚙ 设置按钮 / 右下 🗑 一键清空（带确认弹窗）
+- 正方形文件项（94×94）：图片缩略图撑满 + 底部渐变遮罩显示文件名+大小，悬停浮起 2px + 阴影加深（0.2s `easeInOut`）
+- 右侧悬停操作栈：5 个按钮错开滑入（每个延迟 0.05s，0.25s `easeInOut`），依次为 × 关闭 / 🔒 锁定 / 🗜 压缩 / 📁 新建文件夹 / 📡 隔空投送，按钮悬停变色 + 左侧标签提示
+- 拖入接收：从 Finder 拖文件到面板，`onDrop` 解析 `public.file-url`，自动识别源应用 `bundleId`
+- 拖出分发：从文件项 `.onDrag` 提供 `NSItemProvider`，可拖到 Finder/其他应用
+- 多选交互：`Cmd+点击` 切换选中 / `Cmd+A` 全选（`NSEvent` 本地监听），选中 ≥2 项顶部出现蓝色「新建文件夹」聚合按钮（滑入动画）
+- 新建文件夹：`ShelfFolderEngine` 在第一个选中项所在目录创建文件夹并移入，支持重名处理，创建后在 Finder 中显示
+- 空格快速预览：选中项按空格唤起系统 `QLPreviewPanel`（`QuickLookHelper` 单例），Esc/再按空格关闭
+- 隔空投送：`AirDropHelper` 封装 `NSSharingService(named: .sendViaAirDrop)`
+- 应用规则自动转换：`AppRules` 管理 4 条预设规则（PS/AI/Figma/Sketch → PNG 1x/2x），拖入时按源应用 `bundleId` 匹配规则，`TransformEngine` 用 `ImageIO` 转 PNG/JPG 并缩放，转换中显示 spinner，完成显示格式 badge
+- 手动压缩：文件项操作栈的 🗜 按钮触发 `ShelfStore.compressItem`，按 PNG 1x 规则转换
+- 中转站设置页（`ShelfSettingsView`）：总开关 / 自动隐藏延迟滑块（0.5-5s）/ 应用规则编辑区（格式 Picker + 尺寸 segmented + 启用开关 + 恢复默认）/ 退出时自动清理开关
+- 菜单栏集成：状态栏菜单新增「中转站已启用/已禁用」切换项
+
 ### 修复
 - `scripts/build-dmg.sh` 旧 dmg 挂载残留时打包失败：原脚本固定挂载到 `/Volumes/QuickActions`，与已挂载卷冲突时报「资源忙」。改为让 `hdiutil attach` 自动分配挂载点名（如 `/Volumes/QuickActions 2`），并用 `grep -oE` 正确解析带空格的挂载点和 device，卸载时用 device 强制 eject
 
 ### 变更
+- `ContentView` 新增 `.shelf` case；`SidebarView` 功能区新增「中转站」导航项（`tray` icon）
+- `AppState.applicationDidFinishLaunching` 非服务菜单启动时按 `shelf_enabled` 恢复面板；新增 `applicationWillTerminate` 退出时按 `shelf_cleanup_on_exit` 清理临时文件
+- `ModuleRegistry.allActions` 追加 `ShelfModule.serviceActions`（Phase 1-5 暂无服务菜单入口）
 - `scripts/build-dmg.sh` 增加标准拖拽安装布局：用 `osascript` 控制 Finder 设置 icon view、96px 图标大小，`QuickActions.app` 在左侧 (120,160)、`Applications` 软链接在右侧 (400,160)，窗口 660×400。打包前先清理残留的 QuickActions 挂载点避免 AppleScript 找错卷
 
 ---

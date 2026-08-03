@@ -10,6 +10,7 @@ struct SidebarView: View {
                 primarySectionHeader("功能")
                 navButton(.compress, icon: "photo", label: "图片压缩", isPrimary: true)
                 navButton(.datefolder, icon: "folder", label: "日期文件夹", isPrimary: true)
+                navButton(.shelf, icon: "tray", label: "文件暂存箱", isPrimary: true)
             }
             .padding(.horizontal, 12)
             .padding(.top, 16)

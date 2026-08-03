@@ -267,6 +267,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        // 监听窗口成为 key：设置主窗口 hidesOnDeactivate = false
+        // SwiftUI WindowGroup 主窗口默认 hidesOnDeactivate 可能在 accessory 模式下为 true，
+        // 导致切到其他 app 时主窗口消失。手动设置 false 确保主窗口常驻。
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
+
         // 监听菜单栏"打开设置"通知：accessory 模式下重新打开主窗口
         NotificationCenter.default.addObserver(
             self,
@@ -279,6 +289,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ServiceBridge.subscribe { [weak self] module, args, urls in
             guard let self = self else { return }
             self.handleServiceBridgeRequest(module: module, args: args, urls: urls)
+        }
+
+        // 恢复中转站面板：仅当非服务菜单触发（module 为空）且用户已启用时
+        if module.isEmpty {
+            let shelfEnabled = UserDefaults.standard.object(forKey: "shelf_enabled") as? Bool ?? false
+            if shelfEnabled {
+                ShelfPanelController.shared.enable()
+                AppLog.shared.log("中转站面板已恢复", category: "Shelf")
+            }
         }
     }
 
@@ -366,9 +385,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 窗口成为 key 时设置 hidesOnDeactivate = false
+    /// 确保主窗口在切到其他 app 时保持显示（用户手动打开设置后不应消失）
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        let id = window.identifier?.rawValue ?? ""
+        // 只处理主窗口（非 Shelf 面板/横条/弹窗）
+        if id != "ShelfPanel" && id != "ShelfMinimizedPanel" && id != "InteractivePopup" && window.level == .normal {
+            if window.hidesOnDeactivate {
+                window.hidesOnDeactivate = false
+                AppLog.shared.log("主窗口 hidesOnDeactivate 设为 false（切 app 时保持显示）", category: "App")
+            }
+        }
+    }
+
     /// 防止最后一个窗口关闭时 App 自动退出（accessory 模式需要常驻）
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    /// App 退出时清理中转站临时文件
+    func applicationWillTerminate(_ notification: Notification) {
+        let cleanupOnExit = UserDefaults.standard.object(forKey: "shelf_cleanup_on_exit") as? Bool ?? true
+        if cleanupOnExit {
+            ShelfStore.shared.cleanupUnlockedOnExit()
+        }
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {

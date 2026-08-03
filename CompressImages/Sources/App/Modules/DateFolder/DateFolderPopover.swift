@@ -11,6 +11,15 @@ struct DateFolderPopover: View {
     // "其他"被选中时，用户自定义的渠道文本（持久化，切回"其他"时保留）
     @AppStorage("datefolder_interactive_custom_channel") private var customChannel: String = ""
 
+    // 用户自定义渠道标签列表（JSON 持久化）
+    @AppStorage("datefolder_custom_channels_json") private var customChannelsJSON: String = "[]"
+    // "新增标签"输入态
+    @State private var isAddingChannel = false
+    @State private var newChannelInput = ""
+    @FocusState private var newChannelFocused: Bool
+    // 当前 hover 的自定义标签名（用于显示右上角删除按钮）
+    @State private var hoveringChannel: String?
+
     // 名称输入
     @State private var namePart: String = ""
 
@@ -55,6 +64,49 @@ struct DateFolderPopover: View {
     private var effectiveChannel: String {
         if channel.isEmpty { return "" }
         return channel == "其他" ? customChannel : channel
+    }
+
+    /// 用户自定义渠道标签列表（从 JSON 反序列化）
+    private var customChannels: [String] {
+        guard let data = customChannelsJSON.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return arr
+    }
+
+    private func saveCustomChannels(_ list: [String]) {
+        if let data = try? JSONEncoder().encode(list),
+           let str = String(data: data, encoding: .utf8) {
+            customChannelsJSON = str
+        }
+    }
+
+    /// 新增自定义渠道：回车确认。空名直接取消；与内置/已有重名则切回普通态（不重复添加）
+    private func addChannel() {
+        let trimmed = newChannelInput.trimmingCharacters(in: .whitespaces)
+        newChannelInput = ""
+        isAddingChannel = false
+        newChannelFocused = false
+        guard !trimmed.isEmpty else { return }
+        var list = customChannels
+        let reserved = ["线上", "线下", "其他"]
+        if list.contains(trimmed) || reserved.contains(trimmed) {
+            // 已存在则仅选中
+            channel = trimmed
+            return
+        }
+        list.append(trimmed)
+        saveCustomChannels(list)
+        channel = trimmed  // 自动选中新标签
+    }
+
+    private func deleteChannel(_ ch: String) {
+        var list = customChannels
+        list.removeAll { $0 == ch }
+        saveCustomChannels(list)
+        if channel == ch {
+            channel = ""
+        }
+        hoveringChannel = nil
     }
     /// 最终文件夹名：用 - 拼接所有非空部分（日期 / 渠道 / 项目名称）
     private var finalName: String {
@@ -106,12 +158,16 @@ struct DateFolderPopover: View {
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Color.appleInk)
             Spacer()
-            // 清空按钮：清除日期/渠道选中 + 名称输入
+            // 清空按钮：清除日期/渠道选中 + 名称输入 + 新增标签输入态
             Button {
                 dateFormat = ""
                 channel = ""
                 namePart = ""
                 customChannelFocused = false
+                isAddingChannel = false
+                newChannelInput = ""
+                newChannelFocused = false
+                hoveringChannel = nil
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 12, weight: .regular))
@@ -148,7 +204,7 @@ struct DateFolderPopover: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleSoft)
                     .frame(width: 28, alignment: .leading)
-                // 线上 / 线下（再点一次取消选中）
+                // 线上 / 线下（再点一次取消选中）—— 跟日期行同款 appleSurface2 色块
                 ForEach(["线上", "线下"], id: \.self) { ch in
                     PillButton(
                         label: ch,
@@ -157,6 +213,10 @@ struct DateFolderPopover: View {
                             channel = (channel == ch) ? "" : ch
                         }
                     )
+                }
+                // 用户自定义渠道（排在"其他"之前，再点一次取消选中）
+                ForEach(customChannels, id: \.self) { ch in
+                    customChannelPill(ch)
                 }
                 // "其他" pill：未选中时是普通 pill，
                 // 选中时变成内联输入框（灰底蓝描边，右侧 × 按钮可退出"其他"）
@@ -174,17 +234,6 @@ struct DateFolderPopover: View {
                             .onSubmit {
                                 create()
                             }
-                        // × 退出"其他"，回到未选状态
-                        Button {
-                            channel = ""
-                            customChannelFocused = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Color.appleSoft)
-                                .frame(width: 14, height: 14)
-                        }
-                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -194,22 +243,158 @@ struct DateFolderPopover: View {
                         RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.appleBlue, lineWidth: 1.5)
                     )
+                    .overlay(alignment: .trailing) {
+                        // × 退出"其他"：Image + frame(28,28) + contentShape 保证整个区域可点击
+                        Button {
+                            channel = ""
+                            customChannelFocused = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Color.appleSoft)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onAppear { customChannelFocused = true }
                 } else {
-                    PillButton(
-                        label: "其他",
-                        isSelected: false,
-                        action: {
-                            channel = "其他"
-                            // 切换后等 TextField 渲染完成再聚焦
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                customChannelFocused = true
-                            }
+                    // "其他"未选中：比固定标签稍微暗一些的灰底色块（无描边），表示可输入入口
+                    Button {
+                        channel = "其他"
+                        // 切换后等 TextField 渲染完成再聚焦
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            customChannelFocused = true
                         }
+                    } label: {
+                        Text("其他")
+                            .font(.system(size: 12, weight: .regular))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .foregroundStyle(Color.appleInk)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 32)
+                            .background(Color.appleSurface3)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                // "+新增"虚线按钮：点击切换为内联输入框（最淡，纯辅助入口）
+                if isAddingChannel {
+                    HStack(spacing: 4) {
+                        TextField("输入标签名", text: $newChannelInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Color.appleInk)
+                            .frame(width: 70)
+                            .focused($newChannelFocused)
+                            .onSubmit { addChannel() }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 32)
+                    .background(Color.appleSurface2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.appleBlue, lineWidth: 1.5)
                     )
+                    .overlay(alignment: .trailing) {
+                        // × 取消新增：Image + frame(28,28) + contentShape 保证整个区域可点击
+                        Button {
+                            isAddingChannel = false
+                            newChannelInput = ""
+                            newChannelFocused = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(Color.appleSoft)
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            newChannelFocused = true
+                        }
+                    }
+                } else {
+                    Button {
+                        isAddingChannel = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 10, weight: .regular))
+                            Text("新增")
+                                .font(.system(size: 12, weight: .regular))
+                        }
+                        .foregroundStyle(Color.appleSoft.opacity(0.7))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 32)
+                        .background(Color.clear)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(
+                                    Color.appleSoft.opacity(0.35),
+                                    style: StrokeStyle(
+                                        lineWidth: 1,
+                                        dash: [4, 3]
+                                    )
+                                )
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// 用户自定义渠道 pill：点击切换选中（再点一次取消），hover 时右上角浮出小红删除按钮
+    @ViewBuilder
+    private func customChannelPill(_ ch: String) -> some View {
+        let isSelected = channel == ch
+        let isHovering = hoveringChannel == ch
+        HStack(spacing: 4) {
+            Text(ch)
+                .font(.system(size: 12, weight: .regular))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(isSelected ? .white : Color.appleInk)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(minHeight: 32)
+        .background(isSelected ? Color.appleBlue : Color.appleSurface2)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                Button {
+                    deleteChannel(ch)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.white, Color.red.opacity(0.9))
+                        .background(Circle().fill(Color.appleCanvas))
+                        .offset(x: 5, y: -5)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            channel = (channel == ch) ? "" : ch
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                hoveringChannel = hovering ? ch : nil
             }
         }
     }

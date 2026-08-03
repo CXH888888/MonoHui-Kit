@@ -51,6 +51,16 @@ final class StatusBarController {
         toggleItem.target = self
         menu.addItem(toggleItem)
 
+        // 文件暂存箱切换
+        let shelfEnabled = UserDefaults.standard.object(forKey: "shelf_enabled") as? Bool ?? false
+        let shelfItem = NSMenuItem(
+            title: shelfEnabled ? "✅ 文件暂存箱已启用" : "⬜ 文件暂存箱已禁用",
+            action: #selector(toggleShelf),
+            keyEquivalent: ""
+        )
+        shelfItem.target = self
+        menu.addItem(shelfItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "退出 QuickActions", action: #selector(quit), keyEquivalent: "q")
@@ -75,6 +85,18 @@ final class StatusBarController {
             object: nil,
             userInfo: ["enabled": !current]
         )
+    }
+
+    @objc private func toggleShelf() {
+        let current = UserDefaults.standard.object(forKey: "shelf_enabled") as? Bool ?? false
+        let newValue = !current
+        UserDefaults.standard.set(newValue, forKey: "shelf_enabled")
+        if newValue {
+            ShelfPanelController.shared.enable()
+        } else {
+            ShelfPanelController.shared.disable()
+        }
+        refreshMenu()
     }
 
     @objc private func quit() {

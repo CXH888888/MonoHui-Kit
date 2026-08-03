@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
-    case compress, datefolder, hotkey, settings, about
+    case compress, datefolder, shelf, hotkey, settings, about
     var id: String { rawValue }
 }
 
@@ -34,6 +34,7 @@ struct MainSplitView: View {
                 switch selection {
                 case .compress: MainWindow()
                 case .datefolder: DateFolderView()
+                case .shelf: ShelfSettingsView()
                 case .hotkey: HotKeySettingsView()
                 case .settings: SettingsView()
                 case .about: AboutDiagnosticsView()
@@ -42,5 +43,15 @@ struct MainSplitView: View {
             }
         }
         .frame(width: 1000, height: 800)
+        .onReceive(NotificationCenter.default.publisher(for: .openShelfSettings)) { _ in
+            // 中转站面板「设置」按钮触发：切换到中转站设置页 + 显示主窗口
+            selection = .shelf
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            // 把主窗口置前
+            for window in NSApp.windows where window.identifier?.rawValue != "ShelfPanel" {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
     }
 }

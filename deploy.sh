@@ -168,3 +168,9 @@ elif echo "$SIGN_INFO" | grep -q "Signature=ad hoc"; then
 else
     echo "   ✅ 已使用稳定证书签名，TCC 权限不会因更新失效"
 fi
+
+# 8. 自动打开 app
+echo ""
+echo "8️⃣  启动 QuickActions..."
+open "$INSTALL_DIR"
+echo "   ✅ 已启动"
