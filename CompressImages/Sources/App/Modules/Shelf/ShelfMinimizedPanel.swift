@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 最小化横条面板：10pt 宽，贴屏幕左侧，高度同主面板
 /// 鼠标悬停时由 ShelfPanelController 触发 peekExpand；点击主 panel 右上角 pin icon 触发 unminimize
-final class ShelfMinimizedPanel: NSPanel {
+final class ShelfMinimizedPanel: ShelfClipPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
@@ -16,7 +16,8 @@ final class ShelfMinimizedPanel: NSPanel {
         )
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = true
+        // 关闭窗口阴影：避免跨屏残影
+        self.hasShadow = false
         self.isMovableByWindowBackground = false
         self.level = .floating
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]

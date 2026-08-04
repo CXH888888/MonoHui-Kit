@@ -92,6 +92,11 @@ final class ShelfPanelController {
     /// 当前面板所在的屏幕
     private var currentScreen: NSScreen?
 
+    /// 当前是否正在从暂存箱内部拖动文件（区分内部拖动与外部拖入）
+    /// 内部拖动时全局/本地拖动监听不应触发 showPanel，避免唤起新窗口
+    /// 由 ShelfItemDragNSView.startDragSession 设置为 true，mouseUp/draggingSession 结束时重置
+    var isDraggingFromSelf: Bool = false
+
     private init() {}
 
     // MARK: - 启用/禁用
@@ -224,6 +229,7 @@ final class ShelfPanelController {
         // 等 showPanel 时再 orderFrontRegardless 显示
         self.panel = panel
         self.hostingController = hosting
+        panel.clipScreen = screen
         isShown = false  // 初始即为隐藏状态
         AppLog.shared.log("createPanel: 面板已创建（未 orderFront，完全不可见），finalFrame=\(panel.frame)", category: "Shelf")
     }
@@ -264,6 +270,7 @@ final class ShelfPanelController {
         // 跟随当前鼠标所在屏幕（多显示器支持）
         let screen = mouseScreen() ?? currentScreen ?? NSScreen.main ?? mainScreen()
         currentScreen = screen
+        panel.clipScreen = screen
         let screenFrame = screen.visibleFrame
 
         // 始终使用 UserDefaults 高度作为高度（避免 panel.frame.height 为 0 的bug）
@@ -327,6 +334,7 @@ final class ShelfPanelController {
         if isMinimized { return }
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
+        panel.clipScreen = screen
         let screenFrame = screen.visibleFrame
         // 始终使用 currentPanelHeight 计算高度，避免 frame.height 为 0 时面板被压缩
         let height = min(currentPanelHeight, screenFrame.height * 0.9)
@@ -401,6 +409,7 @@ final class ShelfPanelController {
         NotificationCenter.default.post(name: .shelfMinimizedChanged, object: nil)
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
+        panel.clipScreen = screen
         let screenFrame = screen.visibleFrame
         // 用主面板实际 frame 高度，确保横条高度与面板完全一致
         let height = panel.frame.height
@@ -447,6 +456,7 @@ final class ShelfPanelController {
             isShown = true
             if let panel = panel {
                 let screen = currentScreen ?? NSScreen.main ?? mainScreen()
+                panel.clipScreen = screen
                 let screenFrame = screen.visibleFrame
                 let height = min(currentPanelHeight, screenFrame.height * 0.9)
                 let y = (screenFrame.height - height) / 2 + screenFrame.origin.y
@@ -481,6 +491,7 @@ final class ShelfPanelController {
         minimizedPanel?.orderOut(nil)
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
+        panel.clipScreen = screen
         let screenFrame = screen.visibleFrame
         // 用横条 panel 的实际高度（与主面板一致）
         let height = minimizedPanel?.frame.height ?? panel.frame.height
@@ -513,6 +524,7 @@ final class ShelfPanelController {
         NotificationCenter.default.post(name: .shelfMinimizedChanged, object: nil)
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
+        panel.clipScreen = screen
         let screenFrame = screen.visibleFrame
         // 用主面板实际高度和位置
         let height = panel.frame.height
@@ -638,12 +650,14 @@ final class ShelfPanelController {
         let barFrame = NSRect(x: screenFrame.origin.x, y: y, width: minimizedBarWidth, height: height)
 
         if let existing = minimizedPanel {
+            existing.clipScreen = screen
             existing.setFrame(barFrame, display: true)
             if !existing.isVisible {
                 existing.orderFrontRegardless()
             }
         } else {
             let bar = ShelfMinimizedPanel(contentRect: barFrame)
+            bar.clipScreen = screen
             let view = ShelfMinimizedBar()
             let hosting = NSHostingController(rootView: view)
             hosting.preferredContentSize = NSSize(width: minimizedBarWidth, height: height)
@@ -792,6 +806,7 @@ final class ShelfPanelController {
         guard let panel = panel else { return }
         let oldScreen = currentScreen
         currentScreen = screen
+        panel.clipScreen = screen
 
         let screenFrame = screen.visibleFrame
         let height = min(currentPanelHeight, screenFrame.height * 0.9)
@@ -887,6 +902,8 @@ final class ShelfPanelController {
         globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp]) { [weak self] _ in
             guard let self = self else { return }
             self.currentDragIsFile = false
+            // 重置内部拖动标志，确保下次外部拖入能正常触发
+            self.isDraggingFromSelf = false
             if self.isDraggingOver {
                 self.isDraggingOver = false
                 // 拖动结束且暂存箱已空：触发自动隐藏
@@ -919,6 +936,9 @@ final class ShelfPanelController {
 
     private func handleDragEvent(_ event: NSEvent) {
         guard isEnabled else { return }
+        // 内部拖动（从暂存箱拖出文件到压缩区/AirDrop区等）不触发 showPanel
+        // 避免拖动文件时误唤起新窗口
+        guard !isDraggingFromSelf else { return }
         // 精细化判定：仅当拖动粘贴板包含明确的文件/图像/PDF 类型 UTI 时才触发
         // 避免按空格拖动画板、纯文本拖动、pasteboard 残留数据等场景误触发面板
         // 普通鼠标拖动（无文件）的 pasteboard 类型通常不包含强信号文件 UTI

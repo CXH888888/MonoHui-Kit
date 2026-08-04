@@ -521,6 +521,16 @@ final class ShelfDragSource: NSObject, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        // 拖动会话结束：无论是否内部拖动，都重置 isDraggingFromSelf 标志
+        ShelfPanelController.shared.isDraggingFromSelf = false
+
+        // 内部拖动（拖到暂存箱自身的压缩区/AirDrop区）：不移除源 items
+        // 只有拖到面板外部（Finder/AI 等）才执行剪切移除
+        if let panel = NSApp.windows.first(where: { $0.identifier?.rawValue == "ShelfPanel" }),
+           panel.frame.contains(screenPoint) {
+            AppLog.shared.log("拖动结束于暂存箱内部，跳过移除（内部拖动到压缩/AirDrop区）", category: "Shelf")
+            return
+        }
         // 拖动结束：延迟 0.3s 确保 drop 目标处理完文件，再移除源 items
         let ids = itemIds
         let store = store
@@ -612,6 +622,9 @@ final class ShelfItemDragNSView: NSView {
 
     private func startDragSession(with event: NSEvent) {
         guard let item = item, let store = store else { return }
+
+        // 通知 ShelfPanelController 当前为内部拖动，避免全局监听误触发 showPanel
+        ShelfPanelController.shared.isDraggingFromSelf = true
 
         // 确定要拖出的文件列表：当前 item 在选中集合中且有多选时拖出所有选中项，否则只拖当前项
         let itemsToDrag: [ShelfItem]

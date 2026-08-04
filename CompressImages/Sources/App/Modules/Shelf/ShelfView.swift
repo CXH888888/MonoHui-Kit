@@ -398,6 +398,7 @@ struct ShelfView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(Color.white.opacity(0.5))
                             .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -411,6 +412,7 @@ struct ShelfView: View {
                             .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(store.items.isEmpty ? Color.white.opacity(0.2) : Color.white.opacity(0.5))
                             .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(store.items.isEmpty)
@@ -578,7 +580,8 @@ struct ShelfView: View {
                 onDrop: { urls in
                     AppLog.shared.log("AirDrop 区 ShelfDropTargetView 触发，urls=\(urls.count)", category: "Shelf")
                     handleAirDrop(urls: urls)
-                }
+                },
+                allowsSelfDrop: true
             )
         }
         .onTapGesture {
@@ -616,7 +619,8 @@ struct ShelfView: View {
                 onDrop: { urls in
                     AppLog.shared.log("压缩区 ShelfDropTargetView 触发，urls=\(urls.count)", category: "Shelf")
                     handleCompressAndShelf(urls: urls)
-                }
+                },
+                allowsSelfDrop: true
             )
         }
     }
@@ -642,14 +646,31 @@ struct ShelfView: View {
     }
 
     /// 压缩并暂存：拖入的文件按原格式快速压缩后加入暂存箱
+    /// 从暂存箱内部拖入的文件（cacheDir 路径）不重复添加，仅触发压缩
     private func handleCompressAndShelf(urls: [URL]) {
         Task { @MainActor in
             guard !urls.isEmpty else { return }
             AppLog.shared.log("压缩并暂存：拖入 \(urls.count) 个文件", category: "Shelf")
-            // 加入暂存箱并触发按原格式压缩
-            store.addItems(urls: urls, sourceBundleId: "compress.zone")
-            // 对每个新加入的图片文件触发快速压缩（按原格式）
+            // 区分已在暂存箱中的文件（cacheDir 路径）和新文件
+            let cacheDir = ShelfStore.cacheDirectory
+            var existingUrls: [URL] = []
+            var newUrls: [URL] = []
             for url in urls {
+                if url.path.hasPrefix(cacheDir.path) {
+                    existingUrls.append(url)
+                } else {
+                    newUrls.append(url)
+                }
+            }
+            // 新文件：加入暂存箱并触发压缩
+            if !newUrls.isEmpty {
+                store.addItems(urls: newUrls, sourceBundleId: "compress.zone")
+                for url in newUrls {
+                    await store.compressAndShelf(url: url)
+                }
+            }
+            // 已在暂存箱的文件：仅触发压缩（不重复添加）
+            for url in existingUrls {
                 await store.compressAndShelf(url: url)
             }
         }
@@ -811,9 +832,14 @@ extension Notification.Name {
 struct ShelfDropTargetView: NSViewRepresentable {
     @Binding var isTargeted: Bool
     let onDrop: ([URL]) -> Void
+    /// 是否允许接收暂存箱自身拖出的文件（cacheDir 路径）
+    /// - false（默认）：面板顶层 drop target，过滤自身拖出避免循环添加
+    /// - true：压缩区/AirDrop区，允许自身拖放以触发压缩/AirDrop
+    var allowsSelfDrop: Bool = false
 
     func makeNSView(context: Context) -> ShelfDropTargetNSView {
         let view = ShelfDropTargetNSView()
+        view.allowsSelfDrop = allowsSelfDrop
         // 注册文件 URL、URL、图像、PDF、AI 矢量、SVG、通用数据等拖放类型
         // 矢量格式（com.adobe.pdf / com.adobe.illustrator.ai-image）必须注册，
         // 否则 AI 拖出的矢量数据无法被接收，只能降级为 NSImage 转 PNG 丢失矢量信息
@@ -836,7 +862,7 @@ struct ShelfDropTargetView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ShelfDropTargetNSView, context: Context) {
-        // 无需额外操作，binding 已在 makeNSView 中绑定
+        nsView.allowsSelfDrop = allowsSelfDrop
     }
 
     func makeCoordinator() -> Coordinator {
@@ -856,6 +882,9 @@ final class ShelfDropTargetNSView: NSView {
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
     var onDropProviders: (([URL]) -> Void)?
+    /// 是否允许接收暂存箱自身拖出的文件（cacheDir 路径）
+    /// false 时过滤 cacheDir 文件避免循环添加；true 时允许（压缩区/AirDrop区需要）
+    var allowsSelfDrop: Bool = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -913,18 +942,25 @@ final class ShelfDropTargetNSView: NSView {
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: [
             .urlReadingFileURLsOnly: false
         ]) as? [URL], !urls.isEmpty {
-            // 过滤掉来自暂存箱自身缓存目录的文件
+            // 面板顶层 drop target（allowsSelfDrop=false）：过滤掉来自暂存箱自身缓存目录的文件
             // 场景：从暂存箱拖出文件时，鼠标经过面板会触发顶层 drop target，
             // 若不过滤会把刚拖出的文件又添加回暂存箱，产生 0kb 副本（源文件被拖放会话占用）
-            let cacheDir = ShelfStore.cacheDirectory
-            let filtered = urls.filter { !$0.path.hasPrefix(cacheDir.path) }
-            if filtered.isEmpty {
-                AppLog.shared.log("ShelfDropTargetNSView performDrop: 所有文件均来自缓存目录，过滤掉（暂存箱自身拖出）", category: "Shelf")
+            // 压缩区/AirDrop区（allowsSelfDrop=true）：允许自身拖放，以触发压缩/AirDrop
+            if !allowsSelfDrop {
+                let cacheDir = ShelfStore.cacheDirectory
+                let filtered = urls.filter { !$0.path.hasPrefix(cacheDir.path) }
+                if filtered.isEmpty {
+                    AppLog.shared.log("ShelfDropTargetNSView performDrop: 所有文件均来自缓存目录，过滤掉（暂存箱自身拖出）", category: "Shelf")
+                    return true
+                }
+                AppLog.shared.log("ShelfDropTargetNSView performDrop: urls=\(filtered.count)（过滤前 \(urls.count)）", category: "Shelf")
+                onDropProviders?(filtered)
+                return true
+            } else {
+                AppLog.shared.log("ShelfDropTargetNSView performDrop: allowsSelfDrop=true，接收 urls=\(urls.count)", category: "Shelf")
+                onDropProviders?(urls)
                 return true
             }
-            AppLog.shared.log("ShelfDropTargetNSView performDrop: urls=\(filtered.count)（过滤前 \(urls.count)）", category: "Shelf")
-            onDropProviders?(filtered)
-            return true
         }
 
         // 2. 优先读取矢量格式原始数据（AI 拖出 PDF/AI 数据，保留矢量信息）
