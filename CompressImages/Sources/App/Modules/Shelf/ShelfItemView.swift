@@ -100,9 +100,10 @@ struct ShelfItemView: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // 底部：居中文件大小 + 压缩节省百分比（压缩并暂存后显示）
+            // 底部：居中文件大小 + 压缩变化百分比（压缩并暂存后显示）
+            // savedPercent > 0 = 压缩变小（节省）显示 -X%；< 0 = 变大显示 +X%；= 0 = 无变化
             if let savedPercent = item.savedPercent {
-                Text("\(item.formattedSize)（\(String(format: "%.0f", savedPercent))%）")
+                Text("\(item.formattedSize)\(Self.compressLabel(savedPercent))")
                     .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.85))
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -272,6 +273,16 @@ struct ShelfItemView: View {
                 .controlSize(.small)
                 .tint(.white)
         }
+    }
+
+    // MARK: - 压缩变化标签
+    /// 压缩变化百分比转显示标签
+    /// savedPercent > 0 = 压缩变小（节省）→ -X%；< 0 = 变大 → +X%；= 0 = 无变化
+    private static func compressLabel(_ savedPercent: Double) -> String {
+        let pct = Int(savedPercent.rounded())
+        if pct == 0 { return "（无变化）" }
+        let sign = pct > 0 ? "-" : "+"
+        return "（\(sign)\(abs(pct))%）"
     }
 
     // MARK: - 缩略图加载

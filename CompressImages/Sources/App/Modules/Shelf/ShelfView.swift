@@ -688,23 +688,19 @@ struct ShelfView: View {
     }
 
     /// 拖入处理（接收已提取的 URL 数组，由 ShelfDropTargetNSView 从 pasteboard 提取）
-    /// 外部拖入暂存箱 = 压缩并暂存：加入暂存箱后对每个新 item 触发快速压缩
+    /// 外部拖入暂存箱 = 仅暂存，不自动压缩
+    /// 压缩只在用户手动拖到压缩区时触发
     private func handleDropURLs(urls: [URL]) {
         ShelfPanelController.shared.isDraggingOver = true
         let sourceBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         Task { @MainActor in
-            let newItems = store.addItems(urls: urls, sourceBundleId: sourceBundleId)
-            // 外部拖入暂存箱：对每个新加入的图片文件触发「快速压缩」
-            // addItems 返回的 newItems.url 已是最终路径（Finder 拖入已 relocate 到 cacheDir）
-            for item in newItems {
-                await store.compressAndShelf(id: item.id)
-            }
+            store.addItems(urls: urls, sourceBundleId: sourceBundleId)
             ShelfPanelController.shared.isDraggingOver = false
             // 拖入完成后：若暂存箱为空（例如文件被过滤掉），启动自动隐藏
             if store.items.isEmpty {
                 ShelfPanelController.shared.scheduleAutoHide()
             }
-            AppLog.shared.log("拖入完成：\(urls.count) 个文件，触发压缩 \(newItems.count) 个", category: "Shelf")
+            AppLog.shared.log("拖入完成：\(urls.count) 个文件", category: "Shelf")
         }
     }
 
