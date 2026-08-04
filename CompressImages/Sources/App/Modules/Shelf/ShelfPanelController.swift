@@ -24,9 +24,10 @@ final class ShelfPanelController {
     /// 横条宽度（固定 10pt）
     private let minimizedBarWidth: CGFloat = 10
 
-    /// 自动隐藏延迟（秒）— 从 UserDefaults 读取
+    /// 自动隐藏延迟（秒）— 从 UserDefaults 读取，下限 0.3s 避免异常值
     private var autoHideDelay: TimeInterval {
-        UserDefaults.standard.object(forKey: "shelf_auto_hide_delay") as? Double ?? 1.5
+        let raw = UserDefaults.standard.object(forKey: "shelf_auto_hide_delay") as? Double ?? 1.5
+        return max(0.3, raw)
     }
 
     /// 面板宽度（显示状态）— 从 UserDefaults 读取，默认 140
@@ -373,18 +374,26 @@ final class ShelfPanelController {
     /// 启动自动隐藏倒计时（有文件时不隐藏，保持固定显示）
     func scheduleAutoHide() {
         cancelAutoHide()
-        guard isShown, !isDraggingOver else { return }
+        guard isShown, !isDraggingOver else {
+            AppLog.shared.log("scheduleAutoHide: 跳过 isShown=\(isShown) isDraggingOver=\(isDraggingOver)", category: "Shelf", level: .warn)
+            return
+        }
         // 最小化模式下不启动自动隐藏（由横条 panel 接管）
         if isMinimized { return }
         // 有文件时固定显示，不启动隐藏
         if !ShelfStore.shared.items.isEmpty {
+            AppLog.shared.log("scheduleAutoHide: 跳过（有 \(ShelfStore.shared.items.count) 个文件）", category: "Shelf")
             return
         }
+        AppLog.shared.log("scheduleAutoHide: 启动 \(autoHideDelay)s 倒计时", category: "Shelf")
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: autoHideDelay, repeats: false) { [weak self] _ in
             DispatchQueue.main.async {
+                AppLog.shared.log("autoHideTimer: 触发，执行 hidePanel", category: "Shelf")
                 self?.hidePanel(animated: true)
             }
         }
+        // 关键：把 timer 加到 common 模式，避免 modal/session RunLoop 模式下不触发
+        RunLoop.main.add(autoHideTimer!, forMode: .common)
     }
 
     func cancelAutoHide() {
