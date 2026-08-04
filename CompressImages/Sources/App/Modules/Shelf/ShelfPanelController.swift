@@ -415,6 +415,10 @@ final class ShelfPanelController {
         let height = panel.frame.height
         let y = panel.frame.origin.y
 
+        // 关键：动画开始时立即显示竖条（竖条 orderFront 在主面板之后，z-order 更高）
+        // 主面板向左滑出时竖条一直可见，避免"主面板消失 → 空白 → 竖条出现"的闪烁
+        showMinimizedBar(screen: screen, y: y, height: height)
+
         // 主 panel 向左滑出屏幕（mask 同步机制裁剪跨屏部分，不淡出 alpha 让滑动可见）
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
         NSAnimationContext.runAnimationGroup({ ctx in
@@ -425,7 +429,6 @@ final class ShelfPanelController {
             DispatchQueue.main.async {
                 panel.orderOut(nil)
                 self?.isShown = false
-                self?.showMinimizedBar(screen: screen, y: y, height: height)
                 AppLog.shared.log("minimize: 已最小化为横条 height=\(height)", category: "Shelf")
             }
         })
@@ -525,6 +528,10 @@ final class ShelfPanelController {
         let y = panel.frame.origin.y
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
 
+        // 关键：动画开始时立即显示竖条（竖条 orderFront 在主面板之后，z-order 更高）
+        // 主面板向左滑出时竖条一直可见，避免"主面板消失 → 空白 → 竖条出现"的闪烁
+        showMinimizedBar(screen: screen, y: y, height: height)
+
         // 主 panel 向左滑出屏幕（mask 同步机制裁剪跨屏部分，不淡出 alpha 让滑动可见）
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.35
@@ -534,13 +541,13 @@ final class ShelfPanelController {
             DispatchQueue.main.async {
                 panel.orderOut(nil)
                 self?.isShown = false
-                self?.showMinimizedBar(screen: screen, y: y, height: height)
                 AppLog.shared.log("peekCollapse: 缩回横条 height=\(height)", category: "Shelf")
             }
         })
     }
 
     /// 最小化模式下切换屏幕：横条 panel 或 peek 主 panel 跟随到新屏幕
+    /// 纯滑动跨屏（保持旧屏 clipScreen 直到 Phase 2），与 relocatePanel 逻辑一致
     private func relocateMinimized(to screen: NSScreen) {
         let screenFrame = screen.visibleFrame
         let height = min(currentPanelHeight, screenFrame.height * 0.9)
@@ -551,14 +558,10 @@ final class ShelfPanelController {
             let oldScreen = currentScreen
             currentScreen = screen
             if let oldScreen = oldScreen, oldScreen !== screen, panel.isVisible {
-                // A 屏先滑出隐藏（alpha 快速淡出 0.2s，frame 慢慢滑出 0.25s）
+                // Phase 1：保持旧屏 clipScreen，主面板向左滑出旧屏
+                panel.clipScreen = oldScreen
                 let oldHeight = panel.frame.height
                 let oldHiddenFrame = calcHiddenFrame(for: oldScreen, height: oldHeight)
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.2
-                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
-                    panel.animator().alphaValue = 0
-                }
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.25
                     ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
@@ -566,13 +569,13 @@ final class ShelfPanelController {
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
                         guard let self = self else { return }
+                        // Phase 2：切到新屏，无动画定位到隐藏位置，再滑入
                         panel.orderOut(nil)
-                        panel.alphaValue = 1
+                        panel.clipScreen = screen
                         let hiddenFrame = self.calcHiddenFrame(for: screen, height: height)
                         CATransaction.begin()
                         CATransaction.setDisableActions(true)
                         panel.setFrame(hiddenFrame, display: true, animate: false)
-                        panel.alphaValue = 0
                         CATransaction.commit()
                         panel.orderFrontRegardless()
                         let targetFrame = NSRect(x: screenFrame.origin.x, y: y, width: self.panelWidth, height: height)
@@ -580,12 +583,12 @@ final class ShelfPanelController {
                             ctx.duration = 0.35
                             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
                             panel.animator().setFrame(targetFrame, display: true)
-                            panel.animator().alphaValue = 1
                         }
                     }
                 })
             } else {
                 let targetFrame = NSRect(x: screenFrame.origin.x, y: y, width: panelWidth, height: height)
+                panel.clipScreen = screen
                 panel.setFrame(targetFrame, display: true, animate: false)
             }
         } else if let barPanel = minimizedPanel {
@@ -593,14 +596,10 @@ final class ShelfPanelController {
             let oldScreen = currentScreen
             currentScreen = screen
             if let oldScreen = oldScreen, oldScreen !== screen, barPanel.isVisible {
-                // A 屏横条先滑出隐藏（alpha 快速淡出 0.2s，frame 慢慢滑出 0.25s）
+                // Phase 1：保持旧屏 clipScreen，竖条向左滑出旧屏
+                barPanel.clipScreen = oldScreen
                 let oldHeight = barPanel.frame.height
                 let oldHiddenFrame = calcMinimizedHiddenFrame(for: oldScreen, height: oldHeight)
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.2
-                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
-                    barPanel.animator().alphaValue = 0
-                }
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = 0.25
                     ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
@@ -608,13 +607,13 @@ final class ShelfPanelController {
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
                         guard let self = self else { return }
+                        // Phase 2：切到新屏，无动画定位到隐藏位置，再滑入
                         barPanel.orderOut(nil)
-                        barPanel.alphaValue = 1
+                        barPanel.clipScreen = screen
                         let hiddenFrame = self.calcMinimizedHiddenFrame(for: screen, height: height)
                         CATransaction.begin()
                         CATransaction.setDisableActions(true)
                         barPanel.setFrame(hiddenFrame, display: true, animate: false)
-                        barPanel.alphaValue = 0
                         CATransaction.commit()
                         barPanel.orderFrontRegardless()
                         let barFrame = NSRect(x: screenFrame.origin.x, y: y, width: self.minimizedBarWidth, height: height)
@@ -622,12 +621,12 @@ final class ShelfPanelController {
                             ctx.duration = 0.35
                             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
                             barPanel.animator().setFrame(barFrame, display: true)
-                            barPanel.animator().alphaValue = 1
                         }
                     }
                 })
             } else {
                 let barFrame = NSRect(x: screenFrame.origin.x, y: y, width: minimizedBarWidth, height: height)
+                barPanel.clipScreen = screen
                 barPanel.setFrame(barFrame, display: true, animate: false)
             }
         }

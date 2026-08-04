@@ -32,7 +32,7 @@ final class ShelfMinimizedPanel: ShelfClipPanel {
     }
 }
 
-/// 横条内容视图：纯背景条，无交互按钮
+/// 横条内容视图：纯背景条 + 中间小竖线，无交互按钮
 /// pin icon 已移至主 panel 右上角（peek 展开时显示）
 /// hover 检测由 ShelfPanelController 统一用 NSEvent 监听处理
 struct ShelfMinimizedBar: View {
@@ -62,6 +62,12 @@ struct ShelfMinimizedBar: View {
                 topTrailingRadius: 6
             )
             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
+        .overlay(
+            // 中间小竖线：视觉把手，提示用户这里可以悬停展开
+            Capsule()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 1.5, height: 24)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
