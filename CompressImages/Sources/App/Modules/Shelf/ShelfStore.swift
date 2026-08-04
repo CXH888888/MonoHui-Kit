@@ -281,19 +281,30 @@ final class ShelfStore {
     /// 仅支持图片格式，非图片文件跳过
     @MainActor
     func compressAndShelf(url: URL) async {
-        // 仅支持图片压缩
-        let ext = url.pathExtension.lowercased()
-        guard CompressionFormat.from(fileExtension: ext) != nil else {
-            AppLog.shared.log("压缩并暂存：非图片格式，跳过 - \(url.lastPathComponent)", category: "Shelf")
-            return
-        }
-
-        // 找到对应的暂存箱 item
-        guard let idx = items.firstIndex(where: { $0.url == url }) else {
+        // 用 url 查找 item id，再走 id 通道
+        // 注意：item.url 可能在规则转换后已变成转换后的路径（如 png→jpeg），
+        // 此时用原 url 查不到。所以优先精确匹配 url，匹配不到则按 path 比较
+        guard let idx = items.firstIndex(where: { $0.url == url || $0.url.path == url.path }) else {
             AppLog.shared.log("压缩并暂存：未找到对应 item - \(url.lastPathComponent)", category: "Shelf", level: .warn)
             return
         }
+        await compressAndShelf(id: items[idx].id)
+    }
+
+    /// 按 item id 压缩并暂存（更可靠：不受规则转换后 url 变化影响）
+    @MainActor
+    func compressAndShelf(id: UUID) async {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else {
+            AppLog.shared.log("压缩并暂存：未找到对应 item id=\(id)", category: "Shelf", level: .warn)
+            return
+        }
         let item = items[idx]
+        // 仅支持图片压缩
+        let ext = item.url.pathExtension.lowercased()
+        guard CompressionFormat.from(fileExtension: ext) != nil else {
+            AppLog.shared.log("压缩并暂存：非图片格式，跳过 - \(item.fileName)", category: "Shelf")
+            return
+        }
         items[idx].transformStatus = .converting
 
         // 读取「快速压缩」设置（与 Finder 右键「图片·快速压缩」共用同一组配置）

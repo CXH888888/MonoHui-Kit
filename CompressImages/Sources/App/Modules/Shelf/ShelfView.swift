@@ -664,14 +664,19 @@ struct ShelfView: View {
             }
             // 新文件：加入暂存箱并触发压缩
             if !newUrls.isEmpty {
-                store.addItems(urls: newUrls, sourceBundleId: "compress.zone")
-                for url in newUrls {
-                    await store.compressAndShelf(url: url)
+                let newItems = store.addItems(urls: newUrls, sourceBundleId: "compress.zone")
+                for item in newItems {
+                    await store.compressAndShelf(id: item.id)
                 }
             }
             // 已在暂存箱的文件：仅触发压缩（不重复添加）
+            // 用 id 查找 item，避免规则转换后 url 变化导致匹配失败
             for url in existingUrls {
-                await store.compressAndShelf(url: url)
+                guard let item = store.items.first(where: { $0.url == url || $0.url.path == url.path }) else {
+                    AppLog.shared.log("压缩区：未找到对应 item - \(url.lastPathComponent)", category: "Shelf", level: .warn)
+                    continue
+                }
+                await store.compressAndShelf(id: item.id)
             }
         }
     }
@@ -683,17 +688,23 @@ struct ShelfView: View {
     }
 
     /// 拖入处理（接收已提取的 URL 数组，由 ShelfDropTargetNSView 从 pasteboard 提取）
+    /// 外部拖入暂存箱 = 压缩并暂存：加入暂存箱后对每个新 item 触发快速压缩
     private func handleDropURLs(urls: [URL]) {
         ShelfPanelController.shared.isDraggingOver = true
         let sourceBundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         Task { @MainActor in
-            store.addItems(urls: urls, sourceBundleId: sourceBundleId)
+            let newItems = store.addItems(urls: urls, sourceBundleId: sourceBundleId)
+            // 外部拖入暂存箱：对每个新加入的图片文件触发「快速压缩」
+            // addItems 返回的 newItems.url 已是最终路径（Finder 拖入已 relocate 到 cacheDir）
+            for item in newItems {
+                await store.compressAndShelf(id: item.id)
+            }
             ShelfPanelController.shared.isDraggingOver = false
             // 拖入完成后：若暂存箱为空（例如文件被过滤掉），启动自动隐藏
             if store.items.isEmpty {
                 ShelfPanelController.shared.scheduleAutoHide()
             }
-            AppLog.shared.log("拖入完成：\(urls.count) 个文件", category: "Shelf")
+            AppLog.shared.log("拖入完成：\(urls.count) 个文件，触发压缩 \(newItems.count) 个", category: "Shelf")
         }
     }
 
