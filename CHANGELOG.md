@@ -8,6 +8,30 @@
 
 ---
 
+## [v1.9.2] - 2026-08-04
+
+### 修复
+- 暂存箱内部拖动唤起新窗口：全局拖动监听误判内部拖动为外部拖入，触发 `showPanel` 唤起新窗口。新增 `isDraggingFromSelf` 标志，`ShelfItemDragNSView.startDragSession` 设置为 true，`handleDragEvent` 检测到则跳过；`draggingSession endedAt` 和全局 `mouseUp` 监听中重置
+- 暂存箱拖文件到压缩区无反应：`ShelfDropTargetNSView.performDragOperation` 过滤掉了所有 cacheDir 文件（自身缓存目录），导致从暂存箱拖到压缩区的文件被全部过滤。`ShelfDropTargetView` 新增 `allowsSelfDrop` 参数，压缩区/AirDrop区传 `true`（允许自身拖放），顶层 drop target 保持 `false`（过滤自身拖出避免循环添加）。`handleCompressAndShelf` 区分已在暂存箱中的文件（仅压缩不重复添加）和新文件（添加并压缩）
+- 暂存箱跨屏动画穿透（非最小化模式）：`relocatePanel` 开头立即 `panel.clipScreen = screen`（新屏），但 Phase 1 面板还在旧屏向左滑出，面板滑出旧屏进入新屏右侧时 mask 是新屏的，会显示这部分造成残影。修复：Phase 1 保持 `clipScreen = oldScreen`（旧屏），Phase 2 orderOut 后才切换到 `clipScreen = screen`（新屏）
+- 暂存箱动画期间 mask 滞后：`panel.animator().setFrame()` 动画期间 `setFrame` override 不一定被逐步调用，且 CALayer 隐式动画导致 mask 滞后于 window frame。`ShelfClipPanel` override `orderFrontRegardless`/`orderOut`，panel 可见期间用 Timer（60fps）持续更新 mask；`updateClipMask` 中用 `CATransaction.setDisableActions(true)` 禁用 CALayer 隐式动画
+- 暂存箱最小化动画过渡：`minimize` 和 `peekCollapse` 用 alpha 0.2s 快速淡出 + frame 0.35s 滑出，alpha 先于滑动完成就透明，看起来像直接消失。改为纯向左滑动退回（0.35s），与 `showPanel`/`peekExpand` 滑入对称
+- 暂存箱最小化竖条闪烁：`minimize`/`peekCollapse` 在动画完成后才显示竖条，导致"主面板消失 → 空白 → 竖条出现"闪烁。改为动画开始时立即显示竖条（竖条 `orderFrontRegardless` 在主面板之后，z-order 更高），主面板滑出时竖条一直可见
+- 暂存箱最小化竖条跨屏不跟随：`relocateMinimized` 用 alpha 淡出跨屏，与正常暂存箱逻辑不一致。改为纯滑动跨屏（保持旧屏 `clipScreen` 直到 Phase 2），与 `relocatePanel` 逻辑一致
+
+### 新增
+- 暂存箱最小化竖条中间加一条 1.5pt×24pt 半透明白色小竖线（`Capsule`），作为视觉把手提示用户这里可以悬停展开
+
+---
+
+## [v1.8.1] - 2026-08-04
+
+### 修复
+- 暂存箱跨屏穿帮（终极修复）：面板在右侧扩展屏 B 上唤醒/最小化/peek/跨屏切换时，向左滑出/滑入的隐藏位置（`minX - panelWidth`）落在左侧相邻屏幕 A 的可视区域内，动画期间面板会在 A 屏闪现或从 A 滑向 B。之前的 alphaValue 淡出/淡入方案无效：easeOutExpo 曲线 alpha 起步慢、frame 起步快，面板还没透明就已滑到相邻屏幕。修复：① 新增 `ShelfClipPanel` 基类，给面板内容挂 CALayer 裁剪 mask，mask = 面板 ∩ 所属屏幕，跨出屏幕的部分被裁掉，任何屏幕上都看不到穿帮内容；② 所有窗口 frame 滑动动画（`showPanel`/`hidePanel`/`minimize`/`peekExpand`/`peekCollapse`/`relocatePanel`/`relocateMinimized`）从 `panel.animator()`/`NSAnimationContext` 改为 `PanelFrameAnimator`（CADisplayLink 逐帧驱动，已验证 animator() 动画期间 setFrame 不会逐帧回调、无法同步 mask）。所有屏幕统一从屏幕左边缘滑入/滑出，动画方向与单屏一致
+- 暂存箱最小化闪一下：根因同上（面板滑出时在相邻屏幕上以接近全不透明闪现）。裁剪 mask 生效后，滑出过程完全在所属屏幕内，不再闪现到其他屏幕
+
+---
+
 ## [v1.3.6] - 2026-07-30
 
 ### 修复
