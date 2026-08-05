@@ -73,7 +73,10 @@ final class AppState {
         parseLaunchArgs()
     }
 
-    /// 应用快捷键启用状态：注册/注销热键 + 菜单栏图标 + 激活策略
+    /// 应用快捷键启用状态：注册/注销热键 + 菜单栏图标
+    /// 激活策略（regular/accessory）由窗口生命周期管理，不在此处切换：
+    /// - 主窗口打开时保持 regular（Dock 有图标）
+    /// - 主窗口关闭时若热键启用则切 accessory（Dock 隐藏，菜单栏常驻）
     func applyHotKeyEnabled() {
         AppLog.shared.log("applyHotKeyEnabled hotKeyEnabled=\(hotKeyEnabled) module=\(module)", category: "App")
         if hotKeyEnabled {
@@ -84,18 +87,9 @@ final class AppState {
                 HotKeyManager.shared.registerAllFromSettings()
             }
             StatusBarController.shared.show()
-            // 仅当不是服务菜单触发（无 module）时才切换激活策略
-            if module.isEmpty {
-                NSApp.setActivationPolicy(.accessory)
-                AppLog.shared.log("切换到 accessory 模式（Dock 图标隐藏）", category: "App")
-            }
         } else {
             HotKeyManager.shared.unregisterAll()
             StatusBarController.shared.hide()
-            if module.isEmpty {
-                NSApp.setActivationPolicy(.regular)
-                AppLog.shared.log("切换到 regular 模式", category: "App")
-            }
         }
         StatusBarController.shared.refreshMenu()
     }
@@ -377,11 +371,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // 主窗口（.normal level）关闭：切回 accessory 模式，保留菜单栏常驻
-        // Dock 图标隐藏，但 App 不退出
+        // 主窗口（.normal level）关闭：
+        // - 热键启用：切 accessory 模式（Dock 隐藏，菜单栏常驻作为入口）
+        // - 热键未启用：保持 regular（Dock 保留图标，作为再次打开入口）
         if !isLaunchedByServiceMenu && NSApp.activationPolicy() == .regular {
-            AppLog.shared.log("主窗口关闭 → 切回 accessory 模式（Dock 隐藏，菜单栏保留）", category: "App")
-            NSApp.setActivationPolicy(.accessory)
+            if appState.hotKeyEnabled {
+                AppLog.shared.log("主窗口关闭 → 切回 accessory 模式（Dock 隐藏，菜单栏保留）", category: "App")
+                NSApp.setActivationPolicy(.accessory)
+            } else {
+                AppLog.shared.log("主窗口关闭 → 保持 regular（热键未启用，Dock 保留入口）", category: "App")
+            }
         }
     }
 

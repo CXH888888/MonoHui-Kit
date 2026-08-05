@@ -765,8 +765,11 @@ final class ShelfPanelController {
             // 鼠标离开面板，启动自动隐藏倒计时（内部会判断文件数）
             scheduleAutoHide()
         } else {
-            // 鼠标在面板内，取消自动隐藏
-            cancelAutoHide()
+            // 鼠标在面板内：仅当有文件时取消自动隐藏
+            // 空暂存箱必须按设置自动隐藏，不能因鼠标停留而无限保持
+            if !ShelfStore.shared.items.isEmpty {
+                cancelAutoHide()
+            }
         }
     }
 
@@ -1077,9 +1080,11 @@ final class ShelfPanelController {
 
     // MARK: - 鼠标进出面板（供 ShelfView 调用）
 
-    /// 鼠标进入面板区域：取消自动隐藏
+    /// 鼠标进入面板区域：取消自动隐藏（空暂存箱除外，必须自动隐藏）
     func handleMouseEntered() {
-        cancelAutoHide()
+        if !ShelfStore.shared.items.isEmpty {
+            cancelAutoHide()
+        }
     }
 
     /// 鼠标离开面板区域：启动自动隐藏
