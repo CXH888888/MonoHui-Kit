@@ -907,6 +907,10 @@ final class ShelfPanelController {
         globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp]) { [weak self] _ in
             guard let self = self else { return }
             self.currentDragIsFile = false
+            // 关键：同步 lastDragChangeCount 到当前值
+            // 避免上次拖动残留的 changeCount 偏移导致下次按住鼠标移动时误判为文件拖动
+            // 下次真正的文件拖动会再次写入 pasteboard，changeCount 会再次变化
+            self.lastDragChangeCount = NSPasteboard(name: .drag).changeCount
             // 重置内部拖动标志，确保下次外部拖入能正常触发
             self.isDraggingFromSelf = false
             if self.isDraggingOver {
