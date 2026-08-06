@@ -45,6 +45,17 @@ final class HotKeyDispatcher {
             case .datefolderInteractive:
                 AppLog.shared.log("显示新建文件夹弹窗 urls=\(urls.count)", category: "Dispatcher")
                 showInteractivePopover(urls: urls, module: "datefolder")
+            case .quickRename:
+                guard !urls.isEmpty else {
+                    AppNotification.send(title: "未检测到选中文件", body: "请先在 Finder 中选中文件再按快捷键")
+                    return
+                }
+                if urls.count > 1 {
+                    AppNotification.send(title: "快速改名仅支持单个文件", body: "请只选择一个文件")
+                    return
+                }
+                AppLog.shared.log("显示快速改名弹窗 urls=\(urls.count)", category: "Dispatcher")
+                showInteractivePopover(urls: urls, module: "quickrename")
             }
         }
     }
@@ -65,6 +76,7 @@ final class HotKeyDispatcher {
         switch actionId {
         case .compressInteractive: module = "compress"
         case .datefolderInteractive: module = "datefolder"
+        case .quickRename: module = "quickrename"
         default: return
         }
         showInteractivePopover(urls: urls, module: module)
@@ -155,6 +167,8 @@ final class HotKeyDispatcher {
         AppLog.shared.log("创建独立窗口 module=\(module) urls=\(urls.count)", category: "Dispatcher")
         if module == "compress" {
             openStandaloneWindow(view: InteractivePopover().environment(state))
+        } else if module == "quickrename" {
+            openStandaloneWindow(view: QuickRenamePopover().environment(state))
         } else {
             openStandaloneWindow(view: DateFolderPopover().environment(state))
         }

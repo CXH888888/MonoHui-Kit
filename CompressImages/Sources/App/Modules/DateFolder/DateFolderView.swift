@@ -11,6 +11,7 @@ struct DateFolderView: View {
                 defaultFormatsSection
                 customSection
                 behaviorSection
+                quickRenameSection
             }
             .padding(28)
         }
@@ -21,7 +22,7 @@ struct DateFolderView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("日期文件夹")
+            Text("文件命名扩展")
                 .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(Color.appleInk)
             Text("在 Finder 中右键文件 → 服务 → 文件夹·新建-XXX\n即可在同级目录创建以日期命名的文件夹")
@@ -158,5 +159,27 @@ struct DateFolderView: View {
 
     private var previewName: String {
         "\(prefix)\(DateFolderEngine.formatName(format: "yyMMdd", prefix: "", suffix: ""))\(suffix)"
+    }
+
+    // MARK: - 快速改名说明区块
+    private var quickRenameSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("快速改名")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("在 Finder 中选中文件，按 ⌘R 或右键 → 服务 → 文件命名·快速改名")
+                Text("智能识别原文件名格式，拆解为日期/渠道/名字/版本/状态可编辑字段")
+                Text("状态标签可在弹窗中右键改名、单击新增/删除")
+            }
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(Color.appleSoft)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.appleSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
     }
 }

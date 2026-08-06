@@ -9,7 +9,7 @@ struct SidebarView: View {
             VStack(alignment: .leading, spacing: 6) {
                 primarySectionHeader("功能")
                 navButton(.compress, icon: "photo", label: "图片压缩", isPrimary: true)
-                navButton(.datefolder, icon: "folder", label: "日期文件夹", isPrimary: true)
+                navButton(.datefolder, icon: "folder", label: "文件命名扩展", isPrimary: true)
                 navButton(.shelf, icon: "tray", label: "文件暂存箱", isPrimary: true)
             }
             .padding(.horizontal, 12)

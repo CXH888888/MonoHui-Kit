@@ -312,7 +312,7 @@ struct HotKeySettingsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("• 启用全局快捷键后，App 将驻留菜单栏（Dock 图标隐藏）")
                 Text("• 在 Finder 中选中文件，按对应快捷键即可触发")
-                Text("• 默认快捷键：⌥⇧C 快速压缩 / ⌥⇧I 压缩为… / ⌥⇧N 新建文件夹弹窗")
+                Text("• 默认快捷键：⌥⇧C 快速压缩 / ⌥⇧I 压缩为… / ⌥⇧N 新建文件夹弹窗 / ⌘R 快速改名")
                 Text("• 建议使用 ⌥⇧ 组合，避免与系统快捷键冲突")
                 Text("• 服务菜单作为备用入口仍可使用")
             }

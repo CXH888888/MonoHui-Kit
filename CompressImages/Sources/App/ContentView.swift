@@ -13,6 +13,8 @@ struct ContentView: View {
             InteractivePopover()
         } else if state.module == "datefolder" && state.moduleArgs["mode"] == "interactive" {
             DateFolderPopover()
+        } else if state.module == "quickrename" && state.moduleArgs["mode"] == "interactive" {
+            QuickRenamePopover()
         } else if !state.module.isEmpty {
             Color.clear.frame(width: 0, height: 0)
         } else {

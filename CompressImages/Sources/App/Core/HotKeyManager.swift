@@ -46,19 +46,22 @@ enum HotKeyActionId: String, CaseIterable {
     case compressQuick          = "compress.quick"
     case compressInteractive    = "compress.interactive"
     case datefolderInteractive  = "datefolder.interactive"
+    case quickRename            = "quickrename"
 
     var displayName: String {
         switch self {
         case .compressQuick:         return "快速压缩"
         case .compressInteractive:   return "压缩为…"
         case .datefolderInteractive: return "新建文件夹弹窗"
+        case .quickRename:           return "快速改名"
         }
     }
 
     var category: String {
         switch self {
         case .compressQuick, .compressInteractive: return "图片压缩"
-        case .datefolderInteractive:                return "文件夹"
+        case .datefolderInteractive:                return "文件命名"
+        case .quickRename:                          return "文件命名"
         }
     }
 
@@ -226,6 +229,7 @@ final class HotKeyManager {
         case .compressQuick:         return KeyCombination(keyCode: 8,  modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧C
         case .compressInteractive:   return KeyCombination(keyCode: 34, modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧I
         case .datefolderInteractive: return KeyCombination(keyCode: 45, modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧N
+        case .quickRename:           return KeyCombination(keyCode: 15, modifiers: UInt32(cmdKey)) // ⌘R
         }
     }
 
