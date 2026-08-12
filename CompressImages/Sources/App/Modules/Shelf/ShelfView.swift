@@ -430,10 +430,13 @@ struct ShelfView: View {
                 Button {
                     let ids = Array(store.selectedIds)
                     Task { @MainActor in
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyMMdd"
+                        let defaultName = formatter.string(from: Date())
                         guard let folderItem = ShelfFolderEngine.createFolder(
                             with: ids,
                             in: store,
-                            name: "未命名文件夹"
+                            name: defaultName
                         ) else { return }
                         NotificationCenter.default.post(
                             name: .shelfRenameFolder,
