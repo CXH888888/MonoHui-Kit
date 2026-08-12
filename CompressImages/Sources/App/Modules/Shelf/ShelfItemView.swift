@@ -156,13 +156,16 @@ struct ShelfItemView: View {
         case .compress:
             store.compressItem(id: item.id)
         case .folder:
-            // 直接打包成「未命名文件夹」，文件项变为文件夹项，然后弹重命名小窗
+            // 默认文件夹名为当前日期（yyMMdd 格式，如 260812），文件项变为文件夹项，然后弹重命名小窗
             // 弹窗 Y 跟随当前鼠标 Y（用户刚点击按钮，鼠标即在按钮位置）
             Task { @MainActor in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyMMdd"
+                let defaultName = formatter.string(from: Date())
                 guard let folderItem = ShelfFolderEngine.createFolder(
                     with: [item.id],
                     in: store,
-                    name: "未命名文件夹"
+                    name: defaultName
                 ) else { return }
                 NotificationCenter.default.post(
                     name: .shelfRenameFolder,
