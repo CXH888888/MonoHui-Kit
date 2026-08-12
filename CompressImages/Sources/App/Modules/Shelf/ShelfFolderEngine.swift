@@ -10,7 +10,7 @@ enum ShelfFolderEngine {
         let items = store.items.filter { itemIds.contains($0.id) }
         guard !items.isEmpty else { return nil }
 
-        // 取第一个选中项的目录作为创建位置
+        // 取第一个选中项的目录作为创建位置（暂存箱文件都在 cacheDir，所以文件夹也创建在 cacheDir）
         let parentDir = items[0].url.deletingLastPathComponent()
         let folderURL = parentDir.appendingPathComponent(name, isDirectory: true)
 
@@ -40,13 +40,15 @@ enum ShelfFolderEngine {
                 try FileManager.default.moveItem(at: item.url, to: destFinal)
             }
 
-            // 从中转站移除已移入的项
+            // 从暂存箱列表移除已移入的项（不触发 handleFileRemoval，文件已移入文件夹）
             for id in itemIds {
-                store.remove(id: id)
+                store.removeFromList(id: id)
             }
 
-            // 把新文件夹作为一项加入中转站（保留在中转站内，不打开 Finder）
-            let newItems = store.addItems(urls: [finalURL], sourceBundleId: nil)
+            // 文件夹已在 cacheDir 里，直接创建 ShelfItem 加入
+            // 关键：sourceBundleId 传 "shelf.internal"（非 nil 非 finder），
+            // 避免 addItems 的 shouldRelocate=true 把文件夹当孤儿移到 .history/
+            let newItems = store.addItems(urls: [finalURL], sourceBundleId: "shelf.internal")
 
             AppLog.shared.log("中转站新建文件夹：\(finalURL.lastPathComponent)，移入 \(items.count) 项，文件夹已加入中转站", category: "Shelf")
             return newItems.first

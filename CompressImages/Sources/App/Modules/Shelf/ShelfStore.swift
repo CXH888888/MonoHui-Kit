@@ -374,6 +374,16 @@ final class ShelfStore {
         }
     }
 
+    /// 仅从暂存箱列表移除 item，不触发文件处理（废纸篓/放回原位）
+    /// 用于文件已被其他操作移动的场景（如 createFolder 把文件移入新文件夹）
+    @MainActor
+    func removeFromList(id: UUID) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let item = items.remove(at: idx)
+        selectedIds.remove(id)
+        AppLog.shared.log("中转站列表移除（不处理文件）：\(item.fileName)", category: "Shelf")
+    }
+
     /// 拖出剪切：从暂存箱移除 item，缓存文件保留原位供目标应用读取
     /// - 立即从 UI 移除 item（符合剪切语义）
     /// - 缓存文件保留 cacheDir/ 原位，**不立即移动**（AI 等目标应用持有的 URL 一直有效）
