@@ -51,11 +51,12 @@ final class HotKeyDispatcher {
                     return
                 }
                 if urls.count > 1 {
-                    AppNotification.send(title: "快速改名仅支持单个文件", body: "请只选择一个文件")
-                    return
+                    AppLog.shared.log("显示批量重命名弹窗 urls=\(urls.count)", category: "Dispatcher")
+                    showInteractivePopover(urls: urls, module: "quickrenamebatch")
+                } else {
+                    AppLog.shared.log("显示快速改名弹窗 urls=\(urls.count)", category: "Dispatcher")
+                    showInteractivePopover(urls: urls, module: "quickrename")
                 }
-                AppLog.shared.log("显示快速改名弹窗 urls=\(urls.count)", category: "Dispatcher")
-                showInteractivePopover(urls: urls, module: "quickrename")
             }
         }
     }
@@ -76,7 +77,8 @@ final class HotKeyDispatcher {
         switch actionId {
         case .compressInteractive: module = "compress"
         case .datefolderInteractive: module = "datefolder"
-        case .quickRename: module = "quickrename"
+        case .quickRename:
+            module = urls.count > 1 ? "quickrenamebatch" : "quickrename"
         default: return
         }
         showInteractivePopover(urls: urls, module: module)
@@ -169,6 +171,8 @@ final class HotKeyDispatcher {
             openStandaloneWindow(view: InteractivePopover().environment(state))
         } else if module == "quickrename" {
             openStandaloneWindow(view: QuickRenamePopover().environment(state))
+        } else if module == "quickrenamebatch" {
+            openStandaloneWindow(view: QuickRenameBatchPopover().environment(state))
         } else {
             openStandaloneWindow(view: DateFolderPopover().environment(state))
         }

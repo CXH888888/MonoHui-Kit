@@ -306,6 +306,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             actionId = .compressInteractive
         case ("datefolder", "interactive"):
             actionId = .datefolderInteractive
+        case ("quickrename", "interactive"):
+            actionId = .quickRename
+        case ("quickrenamebatch", "interactive"):
+            actionId = .quickRename
         default:
             AppLog.shared.log("未知的转发请求 module=\(module) args=\(args)", category: "Service", level: .warn)
             return

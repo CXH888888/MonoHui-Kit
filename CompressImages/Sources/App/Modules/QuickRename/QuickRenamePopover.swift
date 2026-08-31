@@ -8,7 +8,10 @@ struct QuickRenamePopover: View {
     @State private var targetURL: URL?
 
     // 日期格式 pill（默认月日，空字符串 = 未选中）
+    // 特殊值 "original" = 使用解析出的原日期
     @State private var dateFormat: String = "MMdd"
+    // 解析出的原日期（避免日期被覆盖为今天）
+    @State private var originalDate: String = ""
 
     // 渠道 pill（默认线上）：线上/线下/其他
     @State private var channel: String = "线上"
@@ -52,7 +55,10 @@ struct QuickRenamePopover: View {
     ]
 
     private var dateLabel: String {
-        dateFormat.isEmpty ? "" : QuickRenameEngine.formatName(format: dateFormat)
+        if dateFormat == "original" {
+            return originalDate
+        }
+        return dateFormat.isEmpty ? "" : QuickRenameEngine.formatName(format: dateFormat)
     }
 
     private var effectiveChannel: String {
@@ -185,6 +191,13 @@ struct QuickRenamePopover: View {
         targetURL?.lastPathComponent ?? ""
     }
 
+    /// 预览用的完整文件名（扩展名为空时不加句号）
+    private var previewFullName: String {
+        if finalName.isEmpty { return originalFileName }
+        let ext = targetURL?.pathExtension ?? ""
+        return ext.isEmpty ? finalName : "\(finalName).\(ext)"
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             headerArea
@@ -228,9 +241,13 @@ struct QuickRenamePopover: View {
 
         // 填充各字段（无格式文件用默认值）
         if !parsed.dateFormat.isEmpty {
-            dateFormat = parsed.dateFormat
+            // 有原日期：默认选"原始"，保留原日期
+            dateFormat = "original"
+            originalDate = parsed.date
         } else {
+            // 无格式文件：默认月日（今天）
             dateFormat = "MMdd"
+            originalDate = ""
         }
 
         if !parsed.channel.isEmpty {
@@ -274,7 +291,8 @@ struct QuickRenamePopover: View {
                         customChannels: customChannels,
                         customStatuses: customStatuses
                     )
-                    dateFormat = parsed.dateFormat.isEmpty ? "MMdd" : parsed.dateFormat
+                    dateFormat = parsed.dateFormat.isEmpty ? "MMdd" : "original"
+                    originalDate = parsed.date
                     channel = parsed.channel.isEmpty ? "线上" : parsed.channel
                     namePart = parsed.name
                     versionNumber = QuickRenameEngine.nextVersion(current: parsed.version)
@@ -340,6 +358,16 @@ struct QuickRenamePopover: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleSoft)
                     .frame(width: 28, alignment: .leading)
+                // 原始日期标签（仅当解析出原日期时显示）
+                if !originalDate.isEmpty {
+                    PillButton(
+                        label: "原始·\(originalDate)",
+                        isSelected: dateFormat == "original",
+                        action: {
+                            dateFormat = (dateFormat == "original") ? "" : "original"
+                        }
+                    )
+                }
                 ForEach(dateFormats, id: \.format) { item in
                     PillButton(
                         label: item.label,
@@ -869,7 +897,7 @@ struct QuickRenamePopover: View {
                     .truncationMode(.middle)
             }
 
-            Text(finalName.isEmpty ? originalFileName : "\(finalName).\(targetURL?.pathExtension ?? "")")
+            Text(previewFullName)
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Color.appleBlue)
                 .lineLimit(1)

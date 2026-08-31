@@ -89,7 +89,8 @@ struct QuickRenameEngine {
             status = bracketStatus
             endIndex -= 1
         } else if isStatus(last, customStatuses: customStatuses) {
-            status = last
+            // 提取纯状态名（去掉 macOS 重名后缀 "定稿 2" → "定稿"）
+            status = extractStatusName(last)
             endIndex -= 1
         } else if let combined = detectVersionAndStatus(last, customStatuses: customStatuses) {
             // 识别 "v3[草稿]" 这种连写形式
@@ -152,34 +153,74 @@ struct QuickRenameEngine {
     }
 
     // MARK: - 方括号状态识别
-    /// 匹配 ^\[(.+)\]$ 格式
+    /// 匹配 ^[\[【］](.+)[\]】］]$ 格式（支持半角[]、全角【】、全角［］）
+    /// 也支持 macOS 重名后缀： "[草稿] 2"
     private static func detectBracketStatus(_ segment: String) -> String? {
-        guard segment.hasPrefix("[") && segment.hasSuffix("]") && segment.count >= 3 else { return nil }
-        let inner = String(segment.dropFirst().dropLast())
+        guard let regex = try? NSRegularExpression(
+            pattern: "^[\\[【［](.+?)[\\]】］](?:\\s*\\d+)?$"
+        ) else { return nil }
+        let range = NSRange(segment.startIndex..., in: segment)
+        guard let match = regex.firstMatch(in: segment, range: range),
+              match.numberOfRanges >= 2,
+              let sRange = Range(match.range(at: 1), in: segment) else { return nil }
+        let inner = String(segment[sRange])
         return inner.isEmpty ? nil : inner
     }
 
     // MARK: - 版本号+状态连写识别
     /// 匹配 "v3[草稿]" / "V2[定稿]" 这种连写形式
+    /// 也支持 macOS 重名后缀： "v3[草稿] 2" / "v1[定稿] 3"
     struct VersionStatusCombo {
         let version: Int
         let status: String
     }
     private static func detectVersionAndStatus(_ segment: String, customStatuses: [String]) -> VersionStatusCombo? {
-        // 匹配 ^[vV](\d+)\[(.+)\]$ 格式
-        let lower = segment.lowercased()
-        guard lower.hasPrefix("v") else { return nil }
-        guard let bracketStart = lower.firstIndex(of: "["), segment.hasSuffix("]") else { return nil }
-        let versionStr = String(lower[lower.index(after: lower.startIndex)..<bracketStart])
-        guard let version = Int(versionStr) else { return nil }
-        let statusStr = String(segment[segment.index(after: bracketStart)..<segment.index(before: segment.endIndex)])
+        // 用正则匹配：^[vV](\d+)[\[【［](.+?)[\]】］](?:\s*\d+)?$
+        guard let regex = try? NSRegularExpression(
+            pattern: "^[vV](\\d+)[\\[【［](.+?)[\\]】］](?:\\s*\\d+)?$"
+        ) else { return nil }
+        let range = NSRange(segment.startIndex..., in: segment)
+        guard let match = regex.firstMatch(in: segment, range: range),
+              match.numberOfRanges >= 3,
+              let vRange = Range(match.range(at: 1), in: segment),
+              let sRange = Range(match.range(at: 2), in: segment) else { return nil }
+        guard let version = Int(segment[vRange]) else { return nil }
+        let statusStr = String(segment[sRange])
         guard !statusStr.isEmpty else { return nil }
         return VersionStatusCombo(version: version, status: statusStr)
     }
 
     // MARK: - 纯文本状态识别
+    /// 支持纯状态名（"定稿"）和 macOS 重名后缀（"定稿 2"）
     private static func isStatus(_ segment: String, customStatuses: [String]) -> Bool {
-        defaultStatuses.contains(segment) || customStatuses.contains(segment)
+        if defaultStatuses.contains(segment) || customStatuses.contains(segment) {
+            return true
+        }
+        // 检查 "状态名 数字" 格式（macOS 重名后缀）
+        guard let regex = try? NSRegularExpression(pattern: "^(.+?)\\s+\\d+$") else { return false }
+        let range = NSRange(segment.startIndex..., in: segment)
+        if let match = regex.firstMatch(in: segment, range: range),
+           match.numberOfRanges >= 2,
+           let sRange = Range(match.range(at: 1), in: segment) {
+            let base = String(segment[sRange])
+            return defaultStatuses.contains(base) || customStatuses.contains(base)
+        }
+        return false
+    }
+
+    /// 从可能带 macOS 重名后缀的段中提取纯状态名（"定稿 2" → "定稿"）
+    private static func extractStatusName(_ segment: String) -> String {
+        if defaultStatuses.contains(segment) || !segment.contains(" ") {
+            return segment
+        }
+        guard let regex = try? NSRegularExpression(pattern: "^(.+?)\\s+\\d+$") else { return segment }
+        let range = NSRange(segment.startIndex..., in: segment)
+        if let match = regex.firstMatch(in: segment, range: range),
+           match.numberOfRanges >= 2,
+           let sRange = Range(match.range(at: 1), in: segment) {
+            return String(segment[sRange])
+        }
+        return segment
     }
 
     // MARK: - 生成新文件名（不含扩展名）

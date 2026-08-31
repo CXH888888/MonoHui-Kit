@@ -13,6 +13,8 @@ struct ShelfView: View {
     @State private var renameAnchorY: CGFloat? = nil
     @State private var keyMonitor: Any?
     @State private var keyGlobalMonitor: Any?
+    /// 空白点击监听：点击暂存箱面板内非文件项区域时取消选中
+    @State private var blankClickMonitor: Any?
 
     /// 是否处于最小化模式（peek 展开时主 panel 显示 pin icon 代替最小化按钮）
     @State private var isShelfMinimized: Bool = false
@@ -186,6 +188,7 @@ struct ShelfView: View {
 
     private func onAppearHandler() {
         installKeyMonitor()
+        installBlankClickMonitor()
         isShelfMinimized = ShelfPanelController.shared.isMinimized
         // 监听打包完成请求重命名
         NotificationCenter.default.addObserver(
@@ -215,6 +218,7 @@ struct ShelfView: View {
 
     private func onDisappearHandler() {
         uninstallKeyMonitor()
+        uninstallBlankClickMonitor()
         NotificationCenter.default.removeObserver(self, name: .shelfRenameFolder, object: nil)
         NotificationCenter.default.removeObserver(self, name: .shelfMinimizedChanged, object: nil)
     }
@@ -333,6 +337,44 @@ struct ShelfView: View {
     }
 
 
+    // MARK: - 空白点击取消选中
+
+    /// 安装本地 mouseUp 监听：点击暂存箱面板内空白区域时取消文件选中
+    /// 原理：监听 leftMouseUp（而非 leftMouseDown），记录点击前的 selectedIds 快照
+    ///       mouseUp 事件 dispatch 后，文件项的 onTap 和按钮的 action 都已在 mouseUp 中执行
+    ///       DispatchQueue.main.async 在事件处理完成后执行，此时检查 selectedIds 是否变化
+    ///       未变化 = 点击没命中文件项或按钮 → clearSelection
+    ///       已变化 = 点击命中了文件项（onTap 改变了 selectedIds）或按钮（action 可能改变状态）→ 不处理
+    /// 不能用 hitTest 判断：SwiftUI Button 在 AppKit 层不是 NSButton（通过 NSHostingView 渲染），
+    /// hitTest 返回的是 NSHostingView 子视图，无法通过类型检查区分按钮和空白
+    private func installBlankClickMonitor() {
+        guard blankClickMonitor == nil else { return }
+        blankClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak store] event in
+            guard let store = store else { return event }
+            guard store.selectedIds.isEmpty == false else { return event }
+            guard let panel = NSApp.windows.first(where: { $0.identifier?.rawValue == "ShelfPanel" }),
+                  NSMouseInRect(NSEvent.mouseLocation, panel.frame, false) else {
+                return event
+            }
+            // 记录 mouseUp 时的选中快照，延迟到事件 dispatch 后检查
+            // 此时 onTap/按钮 action 已执行，如果 selectedIds 变化说明点击命中了交互元素
+            let snapshot = store.selectedIds
+            DispatchQueue.main.async {
+                if store.selectedIds == snapshot {
+                    store.clearSelection()
+                }
+            }
+            return event
+        }
+    }
+
+    private func uninstallBlankClickMonitor() {
+        if let monitor = blankClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            blankClickMonitor = nil
+        }
+    }
+
     // MARK: - 顶部
 
     /// 首次唤醒虚线占位（从未加入过文件时显示）
@@ -429,9 +471,13 @@ struct ShelfView: View {
             HoverTooltipButton(text: "新建文件夹") {
                 Button {
                     let ids = Array(store.selectedIds)
+                    // 关键：必须在 createFolder 之前取 anchorY（createFolder 会清空 itemScreenYs）
+                    // 实时读取每个选中项预览区中心，取中位 Y 让弹窗跟随文件群位置而非聚合按钮位置
+                    let ys = ids.compactMap { PreviewPositionNSView.screenCenterY(for: $0) ?? store.itemScreenYs[$0] }
+                    let anchorY = ys.isEmpty ? NSEvent.mouseLocation.y : ys.reduce(0, +) / CGFloat(ys.count)
                     Task { @MainActor in
                         let formatter = DateFormatter()
-                        formatter.dateFormat = "yyMMdd"
+                        formatter.dateFormat = "yyMMdd-HHmm"
                         let defaultName = formatter.string(from: Date())
                         guard let folderItem = ShelfFolderEngine.createFolder(
                             with: ids,
@@ -444,7 +490,7 @@ struct ShelfView: View {
                             userInfo: [
                                 "id": folderItem.id,
                                 "name": folderItem.fileName,
-                                "anchorY": NSEvent.mouseLocation.y
+                                "anchorY": anchorY
                             ]
                         )
                     }

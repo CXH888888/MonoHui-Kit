@@ -45,6 +45,15 @@ else
   echo "✅ 压缩工具已就绪 ($TOOL_COUNT 个)"
 fi
 
+# Step 1.5: Ensure bundled ImageMagick exists (offline format conversion)
+echo ""
+if [ ! -x "$TOOLS_DIR/imagemagick/bin/magick" ]; then
+  echo "📦 打包内置 ImageMagick（离线格式转换用）..."
+  bash "$ROOT/scripts/package-imagemagick.sh"
+else
+  echo "✅ 内置 ImageMagick 已就绪"
+fi
+
 # Step 2: Generate app icon
 echo ""
 echo "🎨 生成 App 图标..."
@@ -86,6 +95,14 @@ if [ -d "$TOOLS_DIR/lib" ]; then
   mkdir -p "$LIB_DEST"
   cp -R "$TOOLS_DIR/lib/" "$LIB_DEST/" 2>/dev/null || true
   chmod -R +w "$LIB_DEST" 2>/dev/null || true
+fi
+
+# Copy bundled ImageMagick (bin + lib + modules), recursive
+if [ -d "$TOOLS_DIR/imagemagick" ]; then
+  IM_DEST="$APP_BUNDLE/Contents/Resources/tools/imagemagick"
+  mkdir -p "$IM_DEST"
+  cp -R "$TOOLS_DIR/imagemagick/." "$IM_DEST/" 2>/dev/null || true
+  chmod -R +x "$IM_DEST/bin" 2>/dev/null || true
 fi
 
 # Create Info.plist

@@ -90,6 +90,9 @@ final class ShelfPanelController {
         }
     }
 
+    /// 隐藏动画 token：hidePanel 动画启动时记录，showPanel 时自增使旧隐藏回调失效
+    private var hideAnimationToken: Int = 0
+
     /// 当前面板所在的屏幕
     private var currentScreen: NSScreen?
 
@@ -266,6 +269,9 @@ final class ShelfPanelController {
             AppLog.shared.log("showPanel: 跳过（panel=\(panel == nil ? "nil" : "ok") isEnabled=\(isEnabled)）", category: "Shelf", level: .warn)
             return
         }
+        // 使进行中的隐藏动画回调失效：若此前 hidePanel 动画尚未完成，其 completion
+        // 不会再 orderOut 面板，避免「清空后立即隐藏 → 马上拖入 → 隐藏回调把新显示的面板又关掉」
+        hideAnimationToken += 1
         cancelAutoHide()
 
         // 跟随当前鼠标所在屏幕（多显示器支持）
@@ -333,6 +339,8 @@ final class ShelfPanelController {
         guard let panel = panel, isEnabled else { return }
         // 最小化模式下由横条 panel 接管，不执行主 panel 隐藏
         if isMinimized { return }
+        // 清空 pending 的自动隐藏 timer，避免清空后还有延迟隐藏干扰（如用户看到的"等 1.5s 才消失"）
+        cancelAutoHide()
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
         panel.clipScreen = screen
@@ -345,19 +353,20 @@ final class ShelfPanelController {
 
         AppLog.shared.log("hidePanel: animated=\(animated) hiddenFrame=\(hiddenFrame) height=\(height) panelWidth=\(panelWidth)", category: "Shelf")
 
-        // alpha 快速淡出（0.2s）让面板在滑出屏幕边缘前就消失
-        // frame 慢慢滑出（0.35s）保留滑动动效，两个动画并行
+        // 与 showPanel 完全对称的滑出动画：0.35s 同时滑出 + 淡出，完成后隐藏
         if animated {
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
-                panel.animator().alphaValue = 0
-            }
+            let token = hideAnimationToken
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.35
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
                 panel.animator().setFrame(hiddenFrame, display: true)
+                panel.animator().alphaValue = 0
             }, completionHandler: {
+                // 若期间 showPanel 被调用（token 自增），不再 orderOut，避免关闭刚显示的面板
+                guard self.hideAnimationToken == token else {
+                    AppLog.shared.log("hidePanel: 隐藏动画期间面板被重新显示，跳过 orderOut", category: "Shelf")
+                    return
+                }
                 panel.orderOut(nil)
                 panel.alphaValue = 1
             })
@@ -917,11 +926,11 @@ final class ShelfPanelController {
             // 重置内部拖动标志，确保下次外部拖入能正常触发
             self.isDraggingFromSelf = false
             if self.isDraggingOver {
+                // 拖动结束：重置标志。isDraggingOver 的 didSet 会触发 scheduleAutoHide，
+                // 暂存箱为空时启动 1.5s 自动隐藏倒计时（消失前先等 1.5s）。
+                // 注意：不能在这里立即 hidePanel —— 拖入文件时 addItems 是异步的，
+                // 此刻 items 可能仍为空，立即隐藏会让面板在拖入瞬间消失。
                 self.isDraggingOver = false
-                // 拖动结束且暂存箱已空：触发自动隐藏
-                if ShelfStore.shared.items.isEmpty {
-                    self.scheduleAutoHide()
-                }
             }
         }
         AppLog.shared.log("installDragMonitors: 全局+本地+右键拖动+鼠标松开监听已安装", category: "Shelf")
@@ -973,7 +982,9 @@ final class ShelfPanelController {
             guard let panel = panel else { return }
             if !NSMouseInRect(mouseLoc, panel.frame, false) {
                 isDraggingOver = false
-                // 拖动离开面板且暂存箱为空：启动自动隐藏
+                // 拖动离开面板且暂存箱为空：启动 1.5s 自动隐藏倒计时
+                // 消失前先等 1.5s（用户明确要求），且不能立即隐藏——
+                // 拖入文件过程中鼠标短暂离开面板范围时，立即隐藏会让面板在拖入瞬间消失
                 if ShelfStore.shared.items.isEmpty {
                     scheduleAutoHide()
                 }

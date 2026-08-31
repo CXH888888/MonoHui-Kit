@@ -18,16 +18,17 @@ struct ShelfItemView: View {
         return CGFloat(panelWidth) - 36
     }
 
-    /// 右侧操作栈按钮定义（仅保留：关闭、锁定、新建文件夹）
+    /// 右侧操作栈按钮定义（关闭、锁定、重命名、新建文件夹）
     private var actions: [(icon: String, tip: String, color: Color, role: ActionRole)] {
         [
             ("xmark", "关闭", Color(red: 1, green: 0.23, blue: 0.19), .close),
             (item.isLocked ? "lock.fill" : "lock.open.fill", item.isLocked ? "解锁" : "锁定", Color(red: 1, green: 0.62, blue: 0.04), .lock),
+            ("pencil", "重命名", Color(red: 0.2, green: 0.6, blue: 1), .rename),
             ("folder.badge.plus", "新建文件夹", Color(red: 0.2, green: 0.78, blue: 0.35), .folder),
         ]
     }
 
-    enum ActionRole { case close, lock, compress, folder, airdrop }
+    enum ActionRole { case close, lock, compress, folder, airdrop, rename }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -65,6 +66,13 @@ struct ShelfItemView: View {
                     .allowsHitTesting(isHovered)
             }
             .frame(width: size, height: size)
+            // 记录预览区中心在 AppKit 屏幕坐标系中的 Y，供弹窗精确跟随预览区中间
+            // 用 NSView 直接 convert 到窗口再转屏幕坐标，避免 SwiftUI .global 坐标系歧义
+            .background(
+                PreviewPositionReader(itemID: item.id) { screenY in
+                    store.itemScreenYs[item.id] = screenY
+                }
+            )
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -155,15 +163,44 @@ struct ShelfItemView: View {
             store.toggleLock(id: item.id)
         case .compress:
             store.compressItem(id: item.id)
+        case .rename:
+            // 复用新建文件夹的重命名弹窗（ShelfRenamePanel）
+            // 弹窗 Y 实时读取预览区中心的屏幕 Y（精确对齐预览区中间）
+            let id = item.id
+            let anchorY = PreviewPositionNSView.screenCenterY(for: id)
+                ?? store.itemScreenYs[id]
+                ?? NSEvent.mouseLocation.y
+            // 弹窗内会去掉扩展名让用户改文件名主体，确认时自动补回原扩展名（若用户未手动输入）
+            let oldExt = item.url.pathExtension
+            ShelfRenamePanel.shared.show(
+                initialName: item.fileName,
+                itemId: id,
+                anchorScreenY: anchorY,
+                onConfirm: { newName in
+                    var finalName = newName
+                    if !oldExt.isEmpty && (newName as NSString).pathExtension.isEmpty {
+                        finalName = "\(newName).\(oldExt)"
+                    }
+                    store.renameItem(id: id, newName: finalName)
+                },
+                onCancel: {}
+            )
         case .folder:
-            // 默认文件夹名为当前日期（yyMMdd 格式，如 260812），文件项变为文件夹项，然后弹重命名小窗
-            // 弹窗 Y 跟随当前鼠标 Y（用户刚点击按钮，鼠标即在按钮位置）
+            // 默认文件夹名为当前日期+时分（yyMMdd-HHmm 格式，如 260812-1456），文件项变为文件夹项，然后弹重命名小窗
+            // 用时分避免与回收站同名文件夹冲突触发序号后缀
+            // 弹窗 Y 实时读取预览区中心的屏幕 Y
+            // 关键：必须在 createFolder 之前取 anchorY——createFolder 会 removeFromList 并清空
+            // itemScreenYs[item.id]，之后读取会变 nil 落到鼠标位置导致弹窗不对齐
+            let id = item.id
+            let anchorY = PreviewPositionNSView.screenCenterY(for: id)
+                ?? store.itemScreenYs[id]
+                ?? NSEvent.mouseLocation.y
             Task { @MainActor in
                 let formatter = DateFormatter()
-                formatter.dateFormat = "yyMMdd"
+                formatter.dateFormat = "yyMMdd-HHmm"
                 let defaultName = formatter.string(from: Date())
                 guard let folderItem = ShelfFolderEngine.createFolder(
-                    with: [item.id],
+                    with: [id],
                     in: store,
                     name: defaultName
                 ) else { return }
@@ -173,7 +210,7 @@ struct ShelfItemView: View {
                     userInfo: [
                         "id": folderItem.id,
                         "name": folderItem.fileName,
-                        "anchorY": NSEvent.mouseLocation.y
+                        "anchorY": anchorY
                     ]
                 )
             }
@@ -589,6 +626,13 @@ final class ShelfItemDragNSView: NSView {
         return self
     }
 
+    /// 允许在面板非 key 窗口时接收第一次点击
+    /// nonactivatingPanel 默认第一次点击用于"激活"，不传递给视图
+    /// 返回 true 让第一次点击直接触发 mouseDown，实现"一次点击即选中"
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let existing = trackingAreaRef {
@@ -717,5 +761,89 @@ struct ShelfItemDragOverlay: NSViewRepresentable {
         nsView.store = store
         nsView.onTap = onTap
         nsView.onHover = onHover
+    }
+}
+
+// MARK: - 预览区位置测量（AppKit 直接转换，避免 SwiftUI .global 坐标系歧义）
+
+/// 透明 NSView，挂在预览区 ZStack 上，尺寸等于预览区，报告预览区中心在 AppKit 屏幕坐标中的 Y
+/// 转换链：视图中心 → convert 到窗口坐标（nil 即窗口）→ 加窗口 frame.origin.y 得屏幕坐标（左下原点）
+/// 弹窗显示时通过 screenCenterY(for:) 实时查询，保证拿到最新位置
+final class PreviewPositionNSView: NSView {
+    var itemID: UUID?
+    var onPositionUpdate: ((CGFloat) -> Void)?
+
+    /// 实时查询指定 item 预览区中心在 AppKit 屏幕坐标中的 Y（找不到返回 nil）
+    /// 直接遍历暂存箱面板视图层级查找对应 itemID 的测量视图，
+    /// 不依赖注册表（viewDidMoveToWindow 时机不可靠，导致注册缺失）
+    static func screenCenterY(for id: UUID) -> CGFloat? {
+        guard let panel = NSApp.windows.first(where: { $0.identifier?.rawValue == "ShelfPanel" }),
+              let contentView = panel.contentView else {
+            AppLog.shared.log("screenCenterY: 面板未找到", category: "Shelf")
+            return nil
+        }
+        let view = findPreviewView(id: id, in: contentView)
+        guard let view = view, let window = view.window else {
+            AppLog.shared.log("screenCenterY: 未找到 id=\(id) 的测量视图", category: "Shelf")
+            return nil
+        }
+        let centerInWindow = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        let screenY = window.frame.origin.y + centerInWindow.y
+        AppLog.shared.log("screenCenterY: id=\(id) bounds=\(view.bounds) windowY=\(centerInWindow.y) screenY=\(screenY) winFrame=\(window.frame)", category: "Shelf")
+        return screenY
+    }
+
+    /// 深度优先遍历视图层级查找匹配 itemID 的测量视图
+    private static func findPreviewView(id: UUID, in view: NSView) -> PreviewPositionNSView? {
+        if let preview = view as? PreviewPositionNSView, preview.itemID == id {
+            return preview
+        }
+        for sub in view.subviews {
+            if let found = findPreviewView(id: id, in: sub) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    override func layout() {
+        super.layout()
+        refresh()
+    }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        refresh()
+    }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        refresh()
+    }
+
+    func refresh() {
+        guard let window = window else { return }
+        // 视图中心在窗口坐标系（左下原点）
+        let centerInWindow = convert(NSPoint(x: bounds.midX, y: bounds.midY), to: nil)
+        // 窗口坐标 → 屏幕坐标（AppKit，左下原点）：窗口左下角屏幕 Y + 窗口内 Y
+        let screenY = window.frame.origin.y + centerInWindow.y
+        onPositionUpdate?(screenY)
+    }
+}
+
+/// SwiftUI 包装的预览区位置测量视图
+struct PreviewPositionReader: NSViewRepresentable {
+    let itemID: UUID
+    var onPositionUpdate: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> PreviewPositionNSView {
+        let view = PreviewPositionNSView()
+        view.itemID = itemID
+        view.onPositionUpdate = onPositionUpdate
+        return view
+    }
+
+    func updateNSView(_ nsView: PreviewPositionNSView, context: Context) {
+        nsView.itemID = itemID
+        nsView.onPositionUpdate = onPositionUpdate
+        nsView.refresh()
     }
 }

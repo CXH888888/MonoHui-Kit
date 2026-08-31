@@ -12,7 +12,7 @@ struct ShelfSettingsView: View {
     @AppStorage("shelf_panel_width") private var panelWidth: Double = 140
     @AppStorage("shelf_panel_height") private var panelHeight: Double = 400
     @AppStorage("shelf_cleanup_on_exit") private var cleanupOnExit: Bool = true
-    /// 移除方式：keep=放回原位 trash=移到废纸篓
+    /// 移除方式：keep=放回原位 trash=移到 App 回收站（.history/）
     @AppStorage("shelf_remove_action") private var removeAction: String = "trash"
     @State private var rules: [AppRule] = AppRules.shared.rules
     /// 待添加的 App 信息（从 NSOpenPanel 选择后暂存，等待用户选格式确认）
@@ -203,7 +203,7 @@ struct ShelfSettingsView: View {
                         Text("关闭/清空文件时")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(Color.appleInk)
-                        Text("本地文件的处理方式（缓存文件始终移到废纸篓）")
+                        Text("本地文件的处理方式（缓存文件/文件夹始终进 App 回收站）")
                             .font(.system(size: 12))
                             .foregroundStyle(Color.appleSoft)
                     }
@@ -223,8 +223,8 @@ struct ShelfSettingsView: View {
                         action: "keep"
                     )
                     removeOptionButton(
-                        title: "移到废纸篓",
-                        subtitle: "文件进入废纸篓，可恢复",
+                        title: "移到 App 回收站",
+                        subtitle: "进入 App 回收站，超量自动清理",
                         icon: "trash",
                         action: "trash"
                     )

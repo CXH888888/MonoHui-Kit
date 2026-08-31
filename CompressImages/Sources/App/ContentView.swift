@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
-    case compress, datefolder, shelf, hotkey, settings, about
+    case compress, format, datefolder, shelf, hotkey, settings, about
     var id: String { rawValue }
 }
 
@@ -15,6 +15,8 @@ struct ContentView: View {
             DateFolderPopover()
         } else if state.module == "quickrename" && state.moduleArgs["mode"] == "interactive" {
             QuickRenamePopover()
+        } else if state.module == "quickrenamebatch" && state.moduleArgs["mode"] == "interactive" {
+            QuickRenameBatchPopover()
         } else if !state.module.isEmpty {
             Color.clear.frame(width: 0, height: 0)
         } else {
@@ -35,6 +37,7 @@ struct MainSplitView: View {
                 Color.appleCanvas
                 switch selection {
                 case .compress: MainWindow()
+                case .format: FormatConversionView()
                 case .datefolder: DateFolderView()
                 case .shelf: ShelfSettingsView()
                 case .hotkey: HotKeySettingsView()

@@ -15,6 +15,12 @@ final class ShelfStore {
     /// 是否曾经有过文件（用于首次唤醒虚线占位：一旦加入过文件就不再显示虚线引导）
     var hasHadItems: Bool = false
 
+    /// 各文件项预览区中心在屏幕坐标系中的 Y（用于弹窗精确跟随文件位置）
+    /// 由 ShelfItemView 的 PreviewPositionReader 更新
+    /// 用 @ObservationIgnored：此数据仅供弹窗定位读取，写入不应触发 UI 观察，
+    /// 否则 PreviewPositionReader 在 layout 时写入会触发 SwiftUI 重新布局 → 死循环卡死
+    @ObservationIgnored var itemScreenYs: [UUID: CGFloat] = [:]
+
     /// 临时文件目录（对外暴露，供设置页打开查看）
     /// 只存放「当前暂存箱内」的文件，拖出后的文件移到 historyDirectory
     static let cacheDirectory: URL = {
@@ -56,10 +62,15 @@ final class ShelfStore {
             if let idx = items.firstIndex(where: { $0.id == item.id }) {
                 items.remove(at: idx)
                 selectedIds.remove(item.id)
+                itemScreenYs.removeValue(forKey: item.id)
                 AppLog.shared.log("文件已不存在（可能已废纸篓），自动移除：\(item.fileName)", category: "Shelf")
             }
         }
         if items.isEmpty {
+            // 被动检查场景（如 showPanel 后异步触发）：用延迟自动隐藏，
+            // 不能立即 hidePanel——否则与刚执行的 showPanel 形成
+            // showPanel → cleanupMissingItems → hidePanel → 再次 showPanel 死循环，
+            // 面板永远停在屏幕外无法显示
             if ShelfPanelController.shared.isMinimized {
                 ShelfPanelController.shared.unminimize()
             }
@@ -361,15 +372,17 @@ final class ShelfStore {
         // 非锁定项才允许移除（调用方应已检查，这里兜底）
         items.remove(at: idx)
         selectedIds.remove(id)
+        itemScreenYs.removeValue(forKey: id)
         // 根据设置处理文件
         handleFileRemoval(item: item)
         AppLog.shared.log("中转站移除：\(item.fileName)", category: "Shelf")
 
-        // 移除后若无文件：若处于最小化模式先退出，再启动自动隐藏倒计时
+        // 移除后若无文件：若处于最小化模式先退出，再启动 1.5s 自动隐藏倒计时（消失前先等 1.5s）
         if items.isEmpty {
             if ShelfPanelController.shared.isMinimized {
                 ShelfPanelController.shared.unminimize()
             }
+            // 先等 1.5s 再消失（用户明确要求：暂存箱窗口消失前都要先等 1.5s）
             ShelfPanelController.shared.scheduleAutoHide()
         }
     }
@@ -381,6 +394,7 @@ final class ShelfStore {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)
         selectedIds.remove(id)
+        itemScreenYs.removeValue(forKey: id)
         AppLog.shared.log("中转站列表移除（不处理文件）：\(item.fileName)", category: "Shelf")
     }
 
@@ -394,6 +408,7 @@ final class ShelfStore {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: idx)
         selectedIds.remove(id)
+        itemScreenYs.removeValue(forKey: id)
         AppLog.shared.log("拖出剪切：已从暂存箱移除 - \(item.fileName)（缓存文件保留原位供目标应用读取，120s 后清理）", category: "Shelf")
 
         // 文件保留 cacheDir/ 原位，延迟 120s 后把孤儿移到 .history/
@@ -404,11 +419,12 @@ final class ShelfStore {
             }
         }
 
-        // 移除后若无文件：若处于最小化模式先退出，再启动自动隐藏倒计时
+        // 移除后若无文件：若处于最小化模式先退出，再启动 1.5s 自动隐藏倒计时（消失前先等 1.5s）
         if items.isEmpty {
             if ShelfPanelController.shared.isMinimized {
                 ShelfPanelController.shared.unminimize()
             }
+            // 先等 1.5s 再消失（用户明确要求：暂存箱窗口消失前都要先等 1.5s）
             ShelfPanelController.shared.scheduleAutoHide()
         }
     }
@@ -438,9 +454,10 @@ final class ShelfStore {
     // MARK: - 历史记录管理
 
     /// 清理缓存：cacheDir/ 孤儿（超 keepCount 个）移到 .history/，.history/（超 keepCount 个）移到废纸篓
-    /// - cacheDir/ 中的孤儿 = 不在当前 items 中的文件（拖出后留下的，给目标应用读取用）
+    /// - cacheDir/ 中的孤儿 = 不在当前 items 中的文件/文件夹（拖出后留下的，给目标应用读取用）
     /// - 保留最新 keepCount 个孤儿在 cacheDir/（给慢速目标应用留时间），其余移到 .history/
     /// - .history/ 保留最新 keepCount 个，其余移到废纸篓
+    /// - 文件夹与文件统一处理，避免删除的文件夹在 .history/ 中无限累积
     @MainActor
     func cleanupExcessCache(keepCount: Int = 5) {
         // 第一阶段：把 cacheDir/ 中超 keepCount 个的孤儿移到 .history/
@@ -451,9 +468,8 @@ final class ShelfStore {
         ) {
             let currentItemURLs = Set(items.map { $0.url.path })
             let cacheOrphans = cacheFiles.filter { url in
-                var isDir: ObjCBool = false
-                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-                    && !isDir.boolValue
+                // 不过滤文件夹：删除的文件夹也是孤儿，需要参与清理
+                FileManager.default.fileExists(atPath: url.path)
                     && !currentItemURLs.contains(url.path)
             }.sorted { a, b in
                 let dateA = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -478,8 +494,8 @@ final class ShelfStore {
         ) else { return }
 
         let historyOrphans = historyFiles.filter { url in
-            var isDir: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
+            // 不过滤文件夹：.history/ 中的文件夹也需要超量时清到系统废纸篓
+            FileManager.default.fileExists(atPath: url.path)
         }.sorted { a, b in
             let dateA = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let dateB = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -561,29 +577,32 @@ final class ShelfStore {
         let toRemove = items.filter { !$0.isLocked }
         for item in toRemove {
             handleFileRemoval(item: item)
+            itemScreenYs.removeValue(forKey: item.id)
         }
         items.removeAll { !$0.isLocked }
         selectedIds.removeAll()
         AppLog.shared.log("中转站清空未锁定项（\(toRemove.count) 个）", category: "Shelf")
 
-        // 清空后若无文件：若处于最小化模式先退出，再启动自动隐藏倒计时
+        // 清空后若无文件：若处于最小化模式先退出，再启动 1.5s 自动隐藏倒计时（消失前先等 1.5s）
         if items.isEmpty {
             if ShelfPanelController.shared.isMinimized {
                 ShelfPanelController.shared.unminimize()
             }
+            // 先等 1.5s 再消失（用户明确要求：暂存箱窗口消失前都要先等 1.5s）
             ShelfPanelController.shared.scheduleAutoHide()
         }
     }
 
-    /// 文件移除时的处理：根据设置决定放回原位或移到废纸篓
+    /// 文件移除时的处理：根据设置决定放回原位或移到 App 回收站
+    /// App 回收站架构：cacheDir/（当前暂存）→ .history/（App回收站）→ 系统废纸篓（.history/ 超 5 个时清理）
     /// - 本地暂存文件（originalURL != nil，在 cacheDir 下）：
     ///   - "keep"（放回原位）→ 移动回 originalURL
-    ///   - "trash"（废纸篓）→ 移到废纸篓
-    /// - 应用拖入文件（originalURL == nil，不在 cacheDir 下）：
+    ///   - "trash"（移到回收站）→ 移到 .history/（App 回收站）
+    /// - 应用拖入并转存的文件 / 新建文件夹（originalURL == nil，在 cacheDir 下）：
+    ///   - 始终移到 .history/（App 回收站）
+    /// - 应用拖入未转存文件（originalURL == nil，不在 cacheDir 下）：
     ///   - "keep" → 不动文件
-    ///   - "trash" → 移到废纸篓
-    /// - 应用拖入并转存的文件（originalURL == nil，在 cacheDir 下）：
-    ///   - 始终移到废纸篓
+    ///   - "trash" → 移到系统废纸篓（不归 App 管，无法进 App 回收站）
     private func handleFileRemoval(item: ShelfItem) {
         let isInCache = item.url.path.hasPrefix(cacheDir.path)
         let action = UserDefaults.standard.string(forKey: "shelf_remove_action") ?? "trash"
@@ -594,21 +613,22 @@ final class ShelfStore {
                 // 放回原位：移动回 originalURL
                 moveBackToOriginal(from: item.url, to: originalURL, fileName: item.fileName)
             } else {
-                // 移到废纸篓
-                moveURLToTrash(url: item.url, fileName: item.fileName)
-                AppLog.shared.log("暂存文件已移到废纸篓：\(item.fileName)", category: "Shelf")
+                // 移到 App 回收站（.history/）
+                moveToHistory(item.url)
+                AppLog.shared.log("暂存文件已移到 App 回收站：\(item.fileName)", category: "Shelf")
             }
         } else if isInCache {
-            // 应用拖入转存的缓存文件：始终移到废纸篓
-            moveURLToTrash(url: item.url, fileName: item.fileName)
-            AppLog.shared.log("缓存文件已移到废纸篓：\(item.fileName)", category: "Shelf")
+            // 应用拖入转存的缓存文件 / 新建文件夹：移到 App 回收站（.history/）
+            moveToHistory(item.url)
+            AppLog.shared.log("缓存文件已移到 App 回收站：\(item.fileName)", category: "Shelf")
         } else {
             // 应用拖入未转存（保留原 URL）：根据设置决定
             if action == "keep" {
                 AppLog.shared.log("文件已放回原位（未暂存）：\(item.fileName)", category: "Shelf")
             } else {
+                // 不在缓存中的文件不归 App 管，移到系统废纸篓
                 moveURLToTrash(url: item.url, fileName: item.fileName)
-                AppLog.shared.log("文件已移到废纸篓：\(item.fileName)", category: "Shelf")
+                AppLog.shared.log("文件已移到系统废纸篓：\(item.fileName)", category: "Shelf")
             }
         }
     }
