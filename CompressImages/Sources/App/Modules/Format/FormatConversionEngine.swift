@@ -24,6 +24,12 @@ struct FormatItem: Identifiable {
     let id = UUID()
     let url: URL
     var status: Status = .pending
+    let fileSize: UInt64
+
+    init(url: URL) {
+        self.url = url
+        self.fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+    }
 
     enum Status {
         case pending
@@ -34,9 +40,6 @@ struct FormatItem: Identifiable {
 
     var fileName: String { url.lastPathComponent }
     var fileExtension: String { url.pathExtension.lowercased() }
-    var fileSize: UInt64 {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
-    }
 }
 
 /// 系统标准 sRGB ICC 配置文件，用于 --matchTo 色彩空间标准化。
@@ -44,11 +47,11 @@ private let sRGBProfilePath = "/System/Library/ColorSync/Profiles/sRGB Profile.i
 
 /// 用系统自带 sips 批量转换图像格式（含 PSD 渲染像素为平面图）。
 actor FormatConversionEngine {
-    func convert(items: [FormatItem], target: TargetFormat) async -> [FormatItem] {
+    func convert(items: [FormatItem], target: TargetFormat, trimEdges: Bool = false) async -> [FormatItem] {
         await withTaskGroup(of: (Int, FormatItem).self) { group in
             for (index, item) in items.enumerated() {
                 group.addTask { [self] in
-                    let result = await self.convertSingle(item: item, target: target)
+                    let result = await self.convertSingle(item: item, target: target, trimEdges: trimEdges)
                     return (index, result)
                 }
             }
@@ -61,7 +64,7 @@ actor FormatConversionEngine {
         }
     }
 
-    private func convertSingle(item: FormatItem, target: TargetFormat) async -> FormatItem {
+    private func convertSingle(item: FormatItem, target: TargetFormat, trimEdges: Bool) async -> FormatItem {
         var updated = item
         updated.status = .converting
 
@@ -74,11 +77,14 @@ actor FormatConversionEngine {
             proc.executableURL = URL(fileURLWithPath: magick)
             if let env = magickEnvironment(for: magick) { proc.environment = env }
             var args = ["\(item.url.path)[0]", "-background", "none"]
+            // 裁掉四周与边缘同色的空白区域（透明留白/纯色边框），让内容紧贴边界。
+            if trimEdges { args += ["-trim", "+repage"] }
             if target == .jpeg { args += ["-quality", "90"] }
             args.append(outputURL.path)
             proc.arguments = args
         } else {
             // 回退 sips：无 ImageMagick 时仍可用，但复杂 PSD/PSB 的半透明色彩可能与 Photoshop 有偏差。
+            // sips 无裁边能力，trimEdges 在此回退分支不生效。
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
             proc.arguments = [
                 "--matchTo", sRGBProfilePath,

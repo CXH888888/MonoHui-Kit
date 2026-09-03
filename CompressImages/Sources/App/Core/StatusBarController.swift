@@ -9,11 +9,7 @@ final class StatusBarController {
         guard statusItem == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            button.image = NSImage(
-                systemSymbolName: "slider.horizontal.3",
-                accessibilityDescription: "QuickActions"
-            )
-            button.image?.isTemplate = true
+            button.image = makeStatusIcon()
         }
         item.menu = buildMenu()
         statusItem = item
@@ -35,6 +31,23 @@ final class StatusBarController {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+
+        // 四个主功能：点击直接跳转主界面对应页面
+        let entries: [(title: String, icon: String, item: SidebarItem)] = [
+            ("图片压缩", "photo", .compress),
+            ("格式转化", "arrow.triangle.2.circlepath", .format),
+            ("文件命名扩展", "folder", .datefolder),
+            ("文件暂存箱", "tray", .shelf),
+        ]
+        for entry in entries {
+            let item = NSMenuItem(title: entry.title, action: #selector(openSidebarItem(_:)), keyEquivalent: "")
+            item.target = self
+            item.image = NSImage(systemSymbolName: entry.icon, accessibilityDescription: entry.title)
+            item.representedObject = entry.item.rawValue
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
 
         let openItem = NSMenuItem(title: "打开设置…", action: #selector(openSettings), keyEquivalent: "")
         openItem.target = self
@@ -70,11 +83,78 @@ final class StatusBarController {
         return menu
     }
 
+    // MARK: - 图标
+
+    /// 自绘菜单栏图标：实心圆角方块 + 镂空大闪电（负空间反色设计），
+    /// 模板图自动适配深浅菜单栏
+    private func makeStatusIcon() -> NSImage {
+        let pointSize: CGFloat = 18
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 36, pixelsHigh: 36,
+            bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ) else {
+            return NSImage(systemSymbolName: "bolt", accessibilityDescription: "QuickActions")!
+        }
+        rep.size = NSSize(width: pointSize, height: pointSize)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.black.setFill()
+
+        // 实心圆角方块
+        let square = NSBezierPath(
+            roundedRect: NSRect(x: 1.5, y: 1.5, width: 15, height: 15),
+            xRadius: 4.4, yRadius: 4.4
+        )
+
+        // 加大版闪电（占方框高约 3/4，包围盒中心与方块中心对齐 x=9/y=9）
+        let bolt = NSBezierPath()
+        bolt.move(to: NSPoint(x: 11.8, y: 14.5))
+        bolt.line(to: NSPoint(x: 5.2, y: 8.3))
+        bolt.line(to: NSPoint(x: 8.4, y: 8.3))
+        bolt.line(to: NSPoint(x: 7.0, y: 3.5))
+        bolt.line(to: NSPoint(x: 12.8, y: 9.7))
+        bolt.line(to: NSPoint(x: 9.7, y: 9.7))
+        bolt.close()
+
+        // even-odd 填充：方块实心、闪电挖空（透出菜单栏背景色，形成反色）
+        let shape = NSBezierPath()
+        shape.append(square)
+        shape.append(bolt)
+        shape.windingRule = .evenOdd
+        shape.fill()
+
+        NSGraphicsContext.current = nil
+        NSGraphicsContext.restoreGraphicsState()
+
+        let image = NSImage(size: NSSize(width: pointSize, height: pointSize))
+        image.addRepresentation(rep)
+        image.isTemplate = true
+        return image
+    }
+
     // MARK: - Actions
 
+    @objc private func openSidebarItem(_ sender: NSMenuItem) {
+        let raw = sender.representedObject as? String ?? ""
+        NotificationCenter.default.post(
+            name: .openSidebarItemFromStatusBar,
+            object: nil,
+            userInfo: ["item": raw]
+        )
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func openSettings() {
-        // 通过通知让 ContentView 切换到设置页
-        NotificationCenter.default.post(name: .openSettingsFromStatusBar, object: nil)
+        NotificationCenter.default.post(
+            name: .openSidebarItemFromStatusBar,
+            object: nil,
+            userInfo: ["item": SidebarItem.settings.rawValue]
+        )
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -105,6 +185,6 @@ final class StatusBarController {
 }
 
 extension Notification.Name {
-    static let openSettingsFromStatusBar = Notification.Name("openSettingsFromStatusBar")
+    static let openSidebarItemFromStatusBar = Notification.Name("openSidebarItemFromStatusBar")
     static let toggleHotKeyFromStatusBar = Notification.Name("toggleHotKeyFromStatusBar")
 }

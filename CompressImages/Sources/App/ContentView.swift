@@ -26,6 +26,7 @@ struct ContentView: View {
 }
 
 struct MainSplitView: View {
+    @Environment(AppState.self) var state
     @State private var selection: SidebarItem? = .compress
 
     var body: some View {
@@ -48,6 +49,17 @@ struct MainSplitView: View {
             }
         }
         .frame(width: 1000, height: 800)
+        .onAppear {
+            if let pending = state.pendingSidebarItem {
+                selection = pending
+                state.pendingSidebarItem = nil
+            }
+        }
+        .onChange(of: state.pendingSidebarItem) { _, pending in
+            guard let pending else { return }
+            selection = pending
+            state.pendingSidebarItem = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openShelfSettings)) { _ in
             // 中转站面板「设置」按钮触发：切换到中转站设置页 + 显示主窗口
             selection = .shelf

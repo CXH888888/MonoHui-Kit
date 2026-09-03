@@ -17,6 +17,97 @@ struct BatchFieldConfig {
     var enabled: Bool = true  // 是否参与重命名
 }
 
+// MARK: - 预览区滚动检测
+// macOS 14 的 SwiftUI preference 在滚动过程中不更新，改用 AppKit 通知直读 NSScrollView
+struct PreviewScrollGeom: Equatable {
+    var offset: CGFloat = 0         // 0 = 顶部，向下滚动为正
+    var contentHeight: CGFloat = 0  // 列表内容总高
+    var viewportHeight: CGFloat = 0 // 视口（可见区）高度
+}
+
+final class PreviewScrollObserverView: NSView {
+    var onChange: ((PreviewScrollGeom) -> Void)?
+    private var observingClip = false
+    private var observingDoc = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        startObservingIfNeeded()
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        guard window != nil else { return }
+        startObservingIfNeeded()
+        // 布局完成后重读一次（等值守卫防循环）：懒网格行实例化、标签增删都会改变内容高度
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollChanged()
+        }
+    }
+
+    private func startObservingIfNeeded() {
+        if !observingClip,
+           let clip = enclosingScrollView?.contentView {
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(scrollChanged),
+                name: NSView.boundsDidChangeNotification,
+                object: clip
+            )
+            observingClip = true
+        }
+        // 内容高度变化（标签增删/懒网格展开）不触发 clip bounds 通知，需单独监听 documentView 的 frame 变化
+        if !observingDoc,
+           let doc = enclosingScrollView?.documentView {
+            doc.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(scrollChanged),
+                name: NSView.frameDidChangeNotification,
+                object: doc
+            )
+            observingDoc = true
+        }
+        scrollChanged()
+    }
+
+    private var lastGeom: PreviewScrollGeom?
+
+    @objc private func scrollChanged() {
+        guard let clip = enclosingScrollView?.contentView else { return }
+        let geom = PreviewScrollGeom(
+            offset: clip.bounds.origin.y,
+            contentHeight: clip.documentView?.frame.height ?? 0,
+            viewportHeight: clip.bounds.height
+        )
+        // 值未变化时不再回写，避免 viewWillDraw → 状态更新 → 重绘 的循环
+        guard geom != lastGeom else { return }
+        lastGeom = geom
+        onChange?(geom)
+    }
+}
+
+struct PreviewScrollObserver: NSViewRepresentable {
+    var onChange: (PreviewScrollGeom) -> Void
+
+    func makeNSView(context: Context) -> PreviewScrollObserverView {
+        let view = PreviewScrollObserverView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ view: PreviewScrollObserverView, context: Context) {
+        view.onChange = onChange
+    }
+}
+
+struct PreviewRowHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 // MARK: - 批量重命名弹窗
 struct QuickRenameBatchPopover: View {
     @Environment(AppState.self) var state
@@ -66,6 +157,17 @@ struct QuickRenameBatchPopover: View {
     @State private var isRenaming = false
     @State private var showError = false
     @State private var errorMessage = ""
+
+    // 预览区滚动状态（默认 3 行，超出滚动 + 顶/底渐变遮罩）
+    // 更名预览每行固定高度：重名加序号标签等不再改变行高，整个窗口高度稳定不撑开
+    private let previewRowHeight: CGFloat = 60
+    @State private var previewScrollGeom = PreviewScrollGeom()
+    // 细滚动条：仅滚动期间显示，停止 0.9s 后淡出
+    @State private var scrollbarVisible = false
+    @State private var scrollbarHideTask: DispatchWorkItem?
+
+    // 字段编辑器滚动状态（渠道/状态等网格编辑器内部滚动），key = 字段 key
+    @State private var editorScrollGeoms: [String: PreviewScrollGeom] = [:]
 
     struct EditingTag: Equatable {
         let fileIdx: Int
@@ -163,7 +265,7 @@ struct QuickRenameBatchPopover: View {
             date: date, channel: ch, name: name,
             version: ver, versionEnabled: !verStr.isEmpty, status: st
         )
-        if let suffix = dupSuffix, suffix > 1 {
+        if let suffix = dupSuffix {
             built += " \(suffix)"
         }
         return built
@@ -211,6 +313,35 @@ struct QuickRenameBatchPopover: View {
 
     private var hasDuplicates: Bool {
         duplicateSuffixes.contains { $0 != nil }
+    }
+
+    // MARK: - 预览区滚动计算
+
+    /// 预览列表最大高度 = 3 行 + 2 个行间距（行高运行时测量）
+    private var previewListMaxHeight: CGFloat {
+        previewRowHeight * 3 + 6 * 2
+    }
+
+    /// 列表实际高度：内容不足 3 行时按内容高度收缩，超出封顶 3 行（此时可滚动）
+    private var previewListFitHeight: CGFloat {
+        previewScrollGeom.contentHeight > 0
+            ? min(previewScrollGeom.contentHeight, previewListMaxHeight)
+            : previewListMaxHeight
+    }
+
+    /// 顶部渐变：已向下滚动（离开顶部）时显示
+    private var showPreviewTopFade: Bool {
+        previewScrollGeom.offset > 1
+    }
+
+    /// 底部渐变：下方还有未看完的内容时显示
+    private var showPreviewBottomFade: Bool {
+        previewScrollGeom.contentHeight - previewScrollGeom.viewportHeight - previewScrollGeom.offset > 1
+    }
+
+    /// 内容是否溢出视口（决定是否显示细滚动条）
+    private var previewOverflow: Bool {
+        previewScrollGeom.contentHeight > previewScrollGeom.viewportHeight + 1
     }
 
     /// 所有字段是否都有值（用于按钮启用判断）
@@ -511,26 +642,31 @@ struct QuickRenameBatchPopover: View {
                     .onTapGesture { toggleEnabled(config) }
                     .help(config.enabled ? "关闭该字段" : "启用该字段")
             }
-            if config.enabled {
+            if config.key == "name" {
+                // 名字：固定 34pt 外壳——启用时输入框 / 保留时提示 / 关闭时提示都在内，高度恒定
+                ZStack {
+                    if !config.enabled {
+                        disabledHintView(config)
+                    } else if config.mode == .keep {
+                        keepHintView(config)
+                    } else {
+                        unifiedEditor(config)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+            } else if config.enabled {
                 if config.mode == .keep {
                     keepHintView(config)
-                } else if config.key == "name" {
-                    // 名字：单行输入框，固定高度
-                    unifiedEditor(config)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 34)
+                        .frame(height: 62)
                 } else {
-                    // 网格编辑器：最小高度对齐“状态两行”，标签增多时自动增高；版本垂直居中，其余顶对齐
-                    unifiedEditor(config)
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: 62,
-                            maxHeight: .infinity,
-                            alignment: config.key == "version" ? .center : .topLeading
-                        )
+                    // 网格编辑器：固定高度（对齐“状态两行”），标签溢出时内部滚动
+                    editorScrollContainer(key: config.key)
                 }
             } else {
+                // 关闭：灰底提示撑满卡片宽、内容居中（62pt）
                 disabledHintView(config)
+                    .frame(height: 62)
             }
         }
         .padding(12)
@@ -566,44 +702,125 @@ struct QuickRenameBatchPopover: View {
         }
     }
 
-    // 保留模式提示
-    @ViewBuilder
-    private func keepHintView(_ config: BatchFieldConfig) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(Color.orange)
-            Text("保留各自原值，如需修改请在下方预览区点击对应标签")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(Color.orange)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+    // 网格编辑器滚动容器：固定高度，标签溢出时内部滚动（渐变与更名预览同款方案；小区域不放滚动条）
+    private func editorScrollContainer(key: String) -> some View {
+        let geom = editorScrollGeoms[key] ?? PreviewScrollGeom()
+        // 版本单行居中展示；其余网格字段顶对齐
+        let vAlignment: Alignment = key == "version" ? .center : .topLeading
+        return ScrollView(.vertical, showsIndicators: false) {
+            // 外层 VStack 保障 documentView 高度上报可靠（与更名预览同款结构；
+            // LazyVGrid 直接做 ScrollView documentView 时高度上报在 SwiftUI 中不可靠，会丢失底部渐变）
+            VStack(alignment: .leading, spacing: 0) {
+                unifiedEditor(fieldConfig(key: key))
+            }
+            .frame(maxWidth: .infinity, minHeight: editorViewportHeight, alignment: vAlignment)
+            .background(
+                PreviewScrollObserver { g in
+                    if editorScrollGeoms[key] != g {
+                        editorScrollGeoms[key] = g
+                    }
+                }
+            )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .frame(height: editorViewportHeight)
+        // 顶部渐变遮罩：滚动离开顶部后浮现（与更名预览同款，遮罩色 = 卡片底合成到弹窗底的不透明等效色）
+        .overlay(alignment: .top) {
+            LinearGradient(colors: [Color.appleCardOnCanvas, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: editorFadeHeight)
+                .allowsHitTesting(false)
+                .opacity(geom.offset > 1 ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: geom.offset > 1)
+        }
+        // 底部渐变遮罩：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [.clear, Color.appleCardOnCanvas], startPoint: .top, endPoint: .bottom)
+                .frame(height: editorFadeHeight)
+                .allowsHitTesting(false)
+                .opacity(showEditorBottomFade(geom) ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: showEditorBottomFade(geom))
+        }
     }
 
-    // 字段关闭提示
+    /// 编辑器视口固定高度（对齐“状态两行”网格）
+    private let editorViewportHeight: CGFloat = 62
+    /// 编辑器渐变高度：62pt 视口内 28pt 标签行，10pt 约占一行 1/3（与预览区 14pt/44pt 行同比例）
+    private let editorFadeHeight: CGFloat = 10
+
+    /// 底部渐变：下方还有未看完的内容时显示（与更名预览 showPreviewBottomFade 完全同一表达式）
+    private func showEditorBottomFade(_ geom: PreviewScrollGeom) -> Bool {
+        geom.contentHeight - geom.viewportHeight - geom.offset > 1
+    }
+
+    // 保留模式提示（与已关闭提示对称：名字 = 贴内容胶囊块；其他字段 = 撑满卡片宽、整体居中）
+    @ViewBuilder
+    private func keepHintView(_ config: BatchFieldConfig) -> some View {
+        if config.key == "name" {
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.orange)
+                Text("保留各自原值，如需修改请在下方预览区点击对应标签")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.orange)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else {
+            HStack(spacing: 6) {
+                Spacer(minLength: 0)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.orange)
+                Text("保留各自原值")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.orange)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    // 字段关闭提示（两种形态：名字 = 贴内容的灰底胶囊块，参考保留提示；其他字段 = 撑满卡片宽、整体居中）
     @ViewBuilder
     private func disabledHintView(_ config: BatchFieldConfig) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "eye.slash.fill")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(Color.appleMuted)
-            Text("已关闭，不参与重命名")
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(Color.appleMuted)
-                .lineLimit(1)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+        if config.key == "name" {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.appleMuted)
+                Text("已关闭，不参与重命名")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.appleMuted)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.appleSurface2)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else {
+            HStack(spacing: 6) {
+                Spacer(minLength: 0)
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.appleMuted)
+                Text("已关闭，不参与重命名")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(Color.appleMuted)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.appleSurface2)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.appleSurface2)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private func toggleEnabled(_ config: BatchFieldConfig) {
@@ -625,10 +842,10 @@ struct QuickRenameBatchPopover: View {
         let sliderOffset: CGFloat = isUnify ? 2 : (capsuleWidth - sliderWidth - 2)
 
         ZStack(alignment: .topLeading) {
-            // 胶囊背景
-            Capsule()
-                .fill(Color.appleSurface3)
+            // 整体胶囊背景（比 appleSurface3 更深的 appleSurface4，选中区由滑块覆盖）
+            Color.appleSurface4
                 .frame(width: capsuleWidth, height: capsuleHeight)
+                .clipShape(Capsule())
 
             // 滑块（带动画）
             Capsule()
@@ -842,11 +1059,68 @@ struct QuickRenameBatchPopover: View {
                 }
             }
 
-            VStack(spacing: 6) {
-                ForEach(Array(files.enumerated()), id: \.offset) { idx, url in
-                    previewRow(idx: idx)
+            // 默认 3 行 + 2 个行间距；超出后内部滚动（AppKit 通知驱动渐变与细滚动条）
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 6) {
+                    ForEach(Array(files.enumerated()), id: \.offset) { idx, _ in
+                        previewRow(idx: idx)
+                    }
                 }
+                .background(
+                    PreviewScrollObserver { geom in
+                        previewScrollGeom = geom
+                    }
+                )
             }
+            .frame(height: previewListFitHeight)
+            // 顶部渐变遮罩：滚动离开顶部后浮现，避免内容生硬截断
+            .overlay(alignment: .top) {
+                LinearGradient(colors: [Color.appleSurface2, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 14)
+                    .allowsHitTesting(false)
+                    .opacity(showPreviewTopFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: showPreviewTopFade)
+            }
+            // 底部渐变遮罩：下方还有内容时浮现，提示可滚动
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [.clear, Color.appleSurface2], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 14)
+                    .allowsHitTesting(false)
+                    .opacity(showPreviewBottomFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: showPreviewBottomFade)
+            }
+            // 自绘细滚动条：贴右侧边缘；仅滚动期间显示，停止 0.9s 后淡出（macOS 覆盖式滚动条行为）
+            .overlay(alignment: .trailing) {
+                GeometryReader { geo in
+                    let trackHeight = geo.size.height - 8
+                    let ratio = previewScrollGeom.viewportHeight > 0
+                        ? previewScrollGeom.viewportHeight / previewScrollGeom.contentHeight
+                        : 1
+                    let thumbHeight = max(24, trackHeight * ratio)
+                    let maxOffset = previewScrollGeom.contentHeight - previewScrollGeom.viewportHeight
+                    let yOffset = maxOffset > 0
+                        ? previewScrollGeom.offset / maxOffset * (trackHeight - thumbHeight)
+                        : 0
+                    Capsule()
+                        .fill(Color.appleMuted.opacity(0.4))
+                        .frame(width: 3, height: thumbHeight)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .offset(y: 4 + yOffset)
+                }
+                .padding(.trailing, 3)
+                .allowsHitTesting(false)
+                .opacity(previewOverflow && scrollbarVisible ? 1 : 0)
+            }
+            .onChange(of: previewScrollGeom.offset) { _, _ in
+                withAnimation(.easeOut(duration: 0.15)) { scrollbarVisible = true }
+                scrollbarHideTask?.cancel()
+                let task = DispatchWorkItem {
+                    withAnimation(.easeOut(duration: 0.35)) { scrollbarVisible = false }
+                }
+                scrollbarHideTask = task
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9, execute: task)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
@@ -888,12 +1162,16 @@ struct QuickRenameBatchPopover: View {
 
             // 第二行：新文件名标签组（左上对齐）
             HStack(spacing: 3) {
+                // 先算出实际可见（有值）的字段，+ 只出现在非首个可见字段之前，避免行首孤儿 +
+                let visibleKeys = fieldConfigs
+                    .filter { !fieldValue(fileIdx: idx, key: $0.key).isEmpty }
+                    .map(\.key)
                 ForEach(Array(fieldConfigs.enumerated()), id: \.element.key) { _, config in
                     let val = fieldValue(fileIdx: idx, key: config.key)
                     // 没值的字段不显示
                     if !val.isEmpty {
-                        // 分隔符
-                        if config.key != "date" {
+                        // 分隔符：仅当前面已有可见字段时显示
+                        if visibleKeys.first != config.key {
                             Text("+")
                                 .font(.system(size: 10, weight: .regular))
                                 .foregroundStyle(Color.appleMuted.opacity(0.4))
@@ -906,13 +1184,16 @@ struct QuickRenameBatchPopover: View {
                         }
                     }
                 }
-                // 重名后缀
-                if let suffix = dupSuffix, suffix > 1 {
-                    Text(" \(suffix)")
+                // 重名后缀：重名组内所有文件（含第 1 个）都显示序号，样式与其他小标签同款
+                if let suffix = dupSuffix {
+                    Text("\(suffix)")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(Color.orange)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: 16, alignment: .center)
+                        .padding(.vertical, 6)
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
                         .background(Color.orange.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
@@ -937,34 +1218,50 @@ struct QuickRenameBatchPopover: View {
                 .stroke(Color.appleDivider.opacity(0.5), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        // 固定每行高度（含标题行与重名气泡所在标签行），垂直居中：行高恒定，重名不撑开窗口
+        .frame(height: previewRowHeight, alignment: .center)
     }
 
-    // 预览区标签（四周间距统一 6pt，最大宽度限制）
+    // 预览区标签：名字标签伸展占据中间富余空间；其他字段固定 5 字宽，长内容截断
     @ViewBuilder
     private func batchTagLabel(fileIdx: Int, fieldKey: String, value: String) -> some View {
         let displayText: String = fieldKey == "version" ? "v\(value)" : value
         let fieldConfig = fieldConfigs.first(where: { $0.key == fieldKey })
         let isUnify = fieldConfig?.mode == .unify
-        Text(displayText)
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .foregroundStyle(isUnify ? Color.appleBlue : Color.orange)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(6)
-            .frame(maxWidth: 120)
-            .background(isUnify ? Color.appleBlue.opacity(0.10) : Color.orange.opacity(0.10))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .onHover { hovering in
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
+        Group {
+            if fieldKey == "name" {
+                // 名字：占据四个固定标签之外的剩余宽度，内容居中，超长截断
+                Text(displayText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(isUnify ? Color.appleBlue : Color.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(minWidth: 60, maxWidth: .infinity, alignment: .center)
+                    .padding(6)
+            } else {
+                // 小标签：文字区固定 36pt，居中
+                Text(displayText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(isUnify ? Color.appleBlue : Color.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(width: 36, alignment: .center)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 6)
             }
-            .onTapGesture {
-                editingTag = EditingTag(fileIdx: fileIdx, fieldKey: fieldKey)
+        }
+        .background(isUnify ? Color.appleBlue.opacity(0.10) : Color.orange.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
             }
+        }
+        .onTapGesture {
+            editingTag = EditingTag(fileIdx: fileIdx, fieldKey: fieldKey)
+        }
     }
 
     // 预览区标签编辑框
@@ -982,6 +1279,7 @@ struct QuickRenameBatchPopover: View {
             editingTag = nil
         })
         .textFieldStyle(.plain)
+        .multilineTextAlignment(.center)
         .font(.system(size: 11, weight: .regular, design: .monospaced))
         .foregroundStyle(Color.appleInk)
         .padding(.horizontal, 6)
@@ -1059,18 +1357,20 @@ struct QuickRenameBatchPopover: View {
 
     // MARK: - 通用网格 Pill / 渠道子组件（批量版）
 
-    // 与状态标签一致：等宽撑满网格列、间距均匀
+    // 与状态标签一致：等宽撑满网格列、间距均匀；文字用 ZStack 绝对居中，不受网格行高变化影响
     private func batchGridPill(_ text: String, isSelected: Bool, onTap: @escaping () -> Void) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .regular))
-            .lineLimit(1)
-            .foregroundStyle(isSelected ? .white : Color.appleInk)
-            .frame(height: 28)
-            .frame(maxWidth: .infinity)
-            .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onTap)
+        ZStack {
+            Text(text)
+                .font(.system(size: 12, weight: .regular))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? .white : Color.appleInk)
+        }
+        .frame(height: 28)
+        .frame(maxWidth: .infinity)
+        .background(isSelected ? Color.appleBlue : Color.appleSurface2)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
     }
 
     // 自定义渠道标签：hover 时右上角出现删除按钮（参考单文件改名）
@@ -1078,37 +1378,41 @@ struct QuickRenameBatchPopover: View {
     private func batchCustomChannelPill(_ ch: String) -> some View {
         let isSelected = channel == ch
         let isHovering = hoveringChannel == ch
-        Text(ch)
-            .font(.system(size: 12, weight: .regular))
-            .lineLimit(1)
-            .foregroundStyle(isSelected ? .white : Color.appleInk)
-            .frame(height: 28)
-            .frame(maxWidth: .infinity)
-            .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(alignment: .topTrailing) {
-                if isHovering {
-                    Button {
-                        deleteChannel(ch)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.white, Color.red.opacity(0.9))
-                            .background(Circle().fill(Color.appleCanvas))
-                            .offset(x: 4, y: -4)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale))
-                    .help("删除「\(ch)」")
+        ZStack(alignment: .topTrailing) {
+            // 圆角背景（独立于 ZStack，不裁剪删除按钮溢出的边角）
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
+            // 文字（填满 ZStack 高度后内部居中，避免受 topTrailing 对齐影响贴顶）
+            Text(ch)
+                .font(.system(size: 12, weight: .regular))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? .white : Color.appleInk)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 删除按钮（悬停浮现，可轻微溢出 pill 右上角而不被圆角裁切）
+            if isHovering {
+                Button {
+                    deleteChannel(ch)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.white, Color.red.opacity(0.9))
+                        .background(Circle().fill(Color.appleCanvas))
+                        .offset(x: 4, y: -4)
                 }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale))
+                .help("删除「\(ch)」")
             }
-            .contentShape(Rectangle())
-            .onTapGesture { channel = (channel == ch) ? "" : ch }
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    hoveringChannel = hovering ? ch : nil
-                }
+        }
+        .frame(height: 28)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { channel = (channel == ch) ? "" : ch }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                hoveringChannel = hovering ? ch : nil
             }
+        }
     }
 
     // “其他”输入框（撑满网格列）
@@ -1119,6 +1423,7 @@ struct QuickRenameBatchPopover: View {
                 .foregroundStyle(Color.appleBlue)
             TextField("输入", text: $customChannel)
                 .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Color.appleInk)
                 .focused($customChannelFocused)
@@ -1154,6 +1459,7 @@ struct QuickRenameBatchPopover: View {
         HStack(spacing: 4) {
             TextField("输入标签名", text: $newChannelInput)
                 .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Color.appleInk)
                 .focused($newChannelFocused)
@@ -1213,42 +1519,47 @@ struct QuickRenameBatchPopover: View {
         let isSelected = status == st
         let isCustom = !QuickRenameEngine.defaultStatuses.contains(st)
         let isHovering = hoveringStatus == st
-        Text(st)
-            .font(.system(size: 12, weight: .regular))
-            .lineLimit(1)
-            .foregroundStyle(isSelected ? .white : Color.appleInk)
-            .frame(height: 28)
-            .frame(maxWidth: .infinity)
-            .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(alignment: .topTrailing) {
-                if isCustom && isHovering {
-                    Button {
-                        deleteStatus(st)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.white, Color.red.opacity(0.9))
-                            .background(Circle().fill(Color.appleCanvas))
-                            .offset(x: 4, y: -4)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .scale))
-                    .help("删除「\(st)」")
+        ZStack(alignment: .topTrailing) {
+            // 圆角背景（独立于 ZStack，不裁剪删除按钮溢出的边角）
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
+            // 文字
+            Text(st)
+                .font(.system(size: 12, weight: .regular))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? .white : Color.appleInk)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 删除按钮（仅自定义状态悬停浮现，可轻微溢出 pill 右上角而不被圆角裁切）
+            if isCustom && isHovering {
+                Button {
+                    deleteStatus(st)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.white, Color.red.opacity(0.9))
+                        .background(Circle().fill(Color.appleCanvas))
+                        .offset(x: 4, y: -4)
                 }
+                .buttonStyle(.plain)
+                .transition(.opacity.combined(with: .scale))
+                .help("删除「\(st)」")
             }
-            .contentShape(Rectangle())
-            .onTapGesture { status = (status == st) ? "" : st }
-            .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    hoveringStatus = hovering ? st : nil
-                }
+        }
+        .frame(height: 28)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { status = (status == st) ? "" : st }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                hoveringStatus = hovering ? st : nil
             }
+        }
     }
 
     private var batchStatusAddInput: some View {
         TextField("输入", text: $newStatusInput)
             .textFieldStyle(.plain)
+            .multilineTextAlignment(.center)
             .font(.system(size: 12, weight: .regular))
             .foregroundStyle(Color.appleInk)
             .frame(height: 28)

@@ -19,6 +19,8 @@ struct DateFolderPopover: View {
     @FocusState private var newChannelFocused: Bool
     // 当前 hover 的自定义标签名（用于显示右上角删除按钮）
     @State private var hoveringChannel: String?
+    // 渠道行横向滚动状态（标签超出后左右渐变提示，复用单文件重命名的观察器）
+    @State private var channelScrollGeom = ChannelScrollGeom()
 
     // 名称输入
     @State private var namePart: String = ""
@@ -64,6 +66,13 @@ struct DateFolderPopover: View {
     private var effectiveChannel: String {
         if channel.isEmpty { return "" }
         return channel == "其他" ? customChannel : channel
+    }
+
+    // 渠道行渐变：已向右滚（离开最左）→ 左侧渐变；右侧还有内容 → 右侧渐变
+    private var channelLeftFade: Bool { channelScrollGeom.offset > 1 }
+    private var channelRightFade: Bool {
+        channelScrollGeom.contentWidth > 0 &&
+        channelScrollGeom.offset + channelScrollGeom.viewportWidth < channelScrollGeom.contentWidth - 1
     }
 
     /// 用户自定义渠道标签列表（从 JSON 反序列化）
@@ -204,154 +213,181 @@ struct DateFolderPopover: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleSoft)
                     .frame(width: 28, alignment: .leading)
-                // 线上 / 线下（再点一次取消选中）—— 跟日期行同款 appleSurface2 色块
-                ForEach(["线上", "线下"], id: \.self) { ch in
-                    PillButton(
-                        label: ch,
-                        isSelected: channel == ch,
-                        action: {
-                            channel = (channel == ch) ? "" : ch
+                // 标签区横向滚动：超出后左右渐变提示，不再挤压任何按钮
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        // 线上 / 线下（再点一次取消选中）—— 跟日期行同款 appleSurface2 色块
+                        ForEach(["线上", "线下"], id: \.self) { ch in
+                            PillButton(
+                                label: ch,
+                                isSelected: channel == ch,
+                                action: {
+                                    channel = (channel == ch) ? "" : ch
+                                }
+                            )
                         }
-                    )
-                }
-                // 用户自定义渠道（排在"其他"之前，再点一次取消选中）
-                ForEach(customChannels, id: \.self) { ch in
-                    customChannelPill(ch)
-                }
-                // "其他" pill：未选中时是普通 pill，
-                // 选中时变成内联输入框（灰底蓝描边，右侧 × 按钮可退出"其他"）
-                if channel == "其他" {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 10, weight: .regular))
-                            .foregroundStyle(Color.appleBlue)
-                        TextField("输入", text: $customChannel)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(Color.appleInk)
-                            .frame(width: 60)
-                            .focused($customChannelFocused)
-                            .onSubmit {
-                                create()
+                        // 用户自定义渠道（排在"其他"之前，再点一次取消选中）
+                        ForEach(customChannels, id: \.self) { ch in
+                            customChannelPill(ch)
+                        }
+                        // "其他" pill：未选中时是普通 pill，
+                        // 选中时变成内联输入框（灰底蓝描边，右侧 × 按钮可退出"其他"）
+                        if channel == "其他" {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundStyle(Color.appleBlue)
+                                TextField("输入", text: $customChannel)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.center)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Color.appleInk)
+                                    .frame(width: 60)
+                                    .focused($customChannelFocused)
+                                    .onSubmit {
+                                        create()
+                                    }
                             }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: 32)
-                    .background(Color.appleSurface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.appleBlue, lineWidth: 1.5)
-                    )
-                    .overlay(alignment: .trailing) {
-                        // × 退出"其他"：Image + frame(28,28) + contentShape 保证整个区域可点击
-                        Button {
-                            channel = ""
-                            customChannelFocused = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Color.appleSoft)
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onAppear { customChannelFocused = true }
-                } else {
-                    // "其他"未选中：比固定标签稍微暗一些的灰底色块（无描边），表示可输入入口
-                    Button {
-                        channel = "其他"
-                        // 切换后等 TextField 渲染完成再聚焦
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            customChannelFocused = true
-                        }
-                    } label: {
-                        Text("其他")
-                            .font(.system(size: 12, weight: .regular))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .foregroundStyle(Color.appleInk)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .frame(minHeight: 32)
-                            .background(Color.appleSurface3)
+                            .background(Color.appleSurface2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.appleBlue, lineWidth: 1.5)
+                            )
+                            .overlay(alignment: .trailing) {
+                                // × 退出"其他"：Image + frame(28,28) + contentShape 保证整个区域可点击
+                                Button {
+                                    channel = ""
+                                    customChannelFocused = false
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(Color.appleSoft)
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
                             .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                // "+新增"虚线按钮：点击切换为内联输入框（最淡，纯辅助入口）
-                if isAddingChannel {
-                    HStack(spacing: 4) {
-                        TextField("输入标签名", text: $newChannelInput)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(Color.appleInk)
-                            .frame(width: 70)
-                            .focused($newChannelFocused)
-                            .onSubmit { addChannel() }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: 32)
-                    .background(Color.appleSurface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.appleBlue, lineWidth: 1.5)
-                    )
-                    .overlay(alignment: .trailing) {
-                        // × 取消新增：Image + frame(28,28) + contentShape 保证整个区域可点击
-                        Button {
-                            isAddingChannel = false
-                            newChannelInput = ""
-                            newChannelFocused = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Color.appleSoft)
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
+                            .onAppear { customChannelFocused = true }
+                        } else {
+                            // "其他"未选中：比固定标签稍微暗一些的灰底色块（无描边），表示可输入入口
+                            Button {
+                                channel = "其他"
+                                // 切换后等 TextField 渲染完成再聚焦
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    customChannelFocused = true
+                                }
+                            } label: {
+                                Text("其他")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .foregroundStyle(Color.appleInk)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .frame(minHeight: 32)
+                                    .background(Color.appleSurface3)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            newChannelFocused = true
-                        }
-                    }
-                } else {
-                    Button {
-                        isAddingChannel = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .regular))
-                            Text("新增")
-                                .font(.system(size: 12, weight: .regular))
-                        }
-                        .foregroundStyle(Color.appleSoft.opacity(0.7))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .frame(minHeight: 32)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(
-                                    Color.appleSoft.opacity(0.35),
-                                    style: StrokeStyle(
-                                        lineWidth: 1,
-                                        dash: [4, 3]
-                                    )
+                        // "+新增"虚线按钮：点击切换为内联输入框（最淡，纯辅助入口）
+                        if isAddingChannel {
+                            HStack(spacing: 4) {
+                                TextField("输入标签名", text: $newChannelInput)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.center)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Color.appleInk)
+                                    .frame(width: 70)
+                                    .focused($newChannelFocused)
+                                    .onSubmit { addChannel() }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .frame(minHeight: 32)
+                            .background(Color.appleSurface2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.appleBlue, lineWidth: 1.5)
+                            )
+                            .overlay(alignment: .trailing) {
+                                // × 取消新增：Image + frame(28,28) + contentShape 保证整个区域可点击
+                                Button {
+                                    isAddingChannel = false
+                                    newChannelInput = ""
+                                    newChannelFocused = false
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(Color.appleSoft)
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    newChannelFocused = true
+                                }
+                            }
+                        } else {
+                            Button {
+                                isAddingChannel = true
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 10, weight: .regular))
+                                    Text("新增")
+                                        .font(.system(size: 12, weight: .regular))
+                                }
+                                .foregroundStyle(Color.appleSoft.opacity(0.7))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .frame(minHeight: 32)
+                                .background(Color.clear)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(
+                                            Color.appleSoft.opacity(0.35),
+                                            style: StrokeStyle(
+                                                lineWidth: 1,
+                                                dash: [4, 3]
+                                            )
+                                        )
                                 )
-                        )
-                        .contentShape(Rectangle())
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
+                    .background(
+                        ChannelScrollObserver { geom in
+                            channelScrollGeom = geom
+                        }
+                    )
                 }
-                Spacer(minLength: 0)
+                // 左渐变：已向右滚动（离开最左）时浮现
+                .overlay(alignment: .leading) {
+                    LinearGradient(colors: [Color.appleCanvas, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                        .allowsHitTesting(false)
+                        .opacity(channelLeftFade ? 1 : 0)
+                        .animation(.easeOut(duration: 0.12), value: channelLeftFade)
+                }
+                // 右渐变：右侧还有未看完的内容时浮现
+                .overlay(alignment: .trailing) {
+                    LinearGradient(colors: [.clear, Color.appleCanvas], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                        .allowsHitTesting(false)
+                        .opacity(channelRightFade ? 1 : 0)
+                        .animation(.easeOut(duration: 0.12), value: channelRightFade)
+                }
             }
         }
     }

@@ -87,21 +87,30 @@ enum FinderSelection {
 
     // MARK: - AppleScript
 
-    /// AppleScript 方式：读 Finder 前窗口选中项，简单稳定，无需权限
+    /// AppleScript 方式：读 Finder 选中项。前台窗口优先；前台无选区时按 z-order
+    /// 扫描所有窗口取第一个有选区的（多 Finder 窗口时，选中的文件常在非前台窗口里）
     static func selectedURLsAppleScript() -> [URL] {
         let script = """
+        on buildPaths(sel)
+            set out to ""
+            repeat with f in sel
+                set out to out & (POSIX path of (f as alias)) & linefeed
+            end repeat
+            return out
+        end buildPaths
+
         tell application "Finder"
             try
                 set sel to selection
-                if sel is missing value or (count of sel) is 0 then return ""
-                set result to ""
-                repeat with f in sel
-                    set result to result & (POSIX path of (f as alias)) & linefeed
-                end repeat
-                return result
-            on error
-                return ""
+                if sel is not missing value and (count of sel) > 0 then return my buildPaths(sel)
             end try
+            try
+                repeat with w in (every window as list)
+                    set selW to selection of w
+                    if selW is not missing value and (count of selW) > 0 then return my buildPaths(selW)
+                end repeat
+            end try
+            return ""
         end tell
         """
 

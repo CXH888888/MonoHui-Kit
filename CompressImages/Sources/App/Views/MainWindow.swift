@@ -191,23 +191,32 @@ struct MainWindow: View {
         Button {
             showFilePicker = true
         } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .regular))
-                Text("添加")
-                    .font(.system(size: 13, weight: .regular))
+            VStack(spacing: 6) {
+                VStack(spacing: 8) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .regular))
+                    Text("添加")
+                        .font(.system(size: 13, weight: .regular))
+                }
+                .foregroundStyle(Color.appleSoft)
+                .frame(width: 116, height: 116)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.appleBorder, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+                .contentShape(Rectangle())
+
+                // 占位行：与缩略卡片的文件名/大小两行同字体同间距，保证网格行内顶部对齐
+                Text(" ")
+                    .font(.system(size: 12, weight: .regular))
+                    .lineLimit(1)
+                    .frame(width: 116)
+                Text(" ")
+                    .font(.system(size: 11, weight: .medium))
             }
-            .foregroundStyle(Color.appleSoft)
-            .frame(width: 116, height: 116)
-            .background(Color.appleSurface2)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.appleBorder, lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
-        .contentShape(Rectangle())
     }
 
     private func thumbnailCard(item: ImageItem) -> some View {
@@ -215,18 +224,7 @@ struct MainWindow: View {
 
         return VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                if let image = NSImage(contentsOf: item.url) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 116, height: 116)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.appleSurface2)
-                        .frame(width: 116, height: 116)
-                        .overlay(Image(systemName: "doc.fill").foregroundStyle(Color.appleSoft))
-                }
+                ThumbnailView(url: item.url, size: 116, cornerRadius: 12)
 
                 if isHovered {
                     Button(action: { imageItems.removeAll { $0.id == item.id } }) {

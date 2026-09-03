@@ -23,8 +23,15 @@ extension Color {
     // 比 appleSurface2 更深一档（对应苹果 systemGray3）
     static let appleSurface3 = dynamic(light: Color(red: 0.78, green: 0.78, blue: 0.8),
                                        dark: Color(red: 0.15, green: 0.15, blue: 0.15))
+    // 比 appleSurface3 更深一档（供统一/保留切换胶囊底色使用）
+    static let appleSurface4 = dynamic(light: Color(red: 0.70, green: 0.70, blue: 0.72),
+                                       dark: Color(red: 0.12, green: 0.12, blue: 0.125))
     static let appleCanvas = dynamic(light: .white,
                                      dark: Color(red: 0.11, green: 0.11, blue: 0.12))
+    /// appleSurface（白 5% 半透明）合成到 appleCanvas 后的不透明等效色：
+    /// 卡片滚动渐变遮罩必须用它，直接用半透明的 appleSurface 盖不住滚出的内容
+    static let appleCardOnCanvas = dynamic(light: .white,
+                                           dark: Color(red: 0.155, green: 0.155, blue: 0.164))
     static let appleBorder = dynamic(light: Color.black.opacity(0.16),
                                      dark: Color.white.opacity(0.16))
     static let appleDivider = dynamic(light: Color.black.opacity(0.10),

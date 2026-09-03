@@ -7,6 +7,8 @@ final class AppState {
     var preloadedURLs: [URL] = []
     var module: String = ""
     var moduleArgs: [String: String] = [:]
+    /// 菜单栏功能项点击后记录目标页面，MainSplitView 挂载/刷新时消费
+    var pendingSidebarItem: SidebarItem?
     var selectedFormat: CompressionFormat = .jpeg {
         didSet { UserDefaults.standard.set(selectedFormat.rawValue, forKey: "format") }
     }
@@ -271,11 +273,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
-        // 监听菜单栏"打开设置"通知：accessory 模式下重新打开主窗口
+        // 监听菜单栏功能项点击：打开主窗口并跳转对应页面
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(openSettingsFromStatusBar),
-            name: .openSettingsFromStatusBar,
+            selector: #selector(openSidebarItemFromStatusBar(_:)),
+            name: .openSidebarItemFromStatusBar,
             object: nil
         )
 
@@ -329,23 +331,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func openSettingsFromStatusBar() {
-        // 重置 module，让 ContentView 显示主界面
+    /// 点击 Dock 图标 / 启动台重新打开 App 时：确保主窗口出现。
+    /// 系统默认只激活「已有窗口」——中转站面板（常驻 NSPanel）存在时被判定为已有窗口，
+    /// 不会新建主窗口，表现为 Dock 只亮点、无窗口可唤起。这里显式查找/新建主窗口。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // 交互弹窗显示中不重置 module，避免打断正在进行的操作
+        let hasPopup = NSApp.windows.contains { $0.identifier?.rawValue == "InteractivePopup" && $0.isVisible }
+        if !hasPopup {
+            appState.preloadedURLs = []
+            appState.module = ""
+            appState.moduleArgs = [:]
+        }
+        showMainWindow()
+        return true
+    }
+
+    @objc private func openSidebarItemFromStatusBar(_ note: Notification) {
+        let raw = note.userInfo?["item"] as? String ?? ""
+        guard let item = SidebarItem(rawValue: raw) else { return }
         appState.preloadedURLs = []
         appState.module = ""
         appState.moduleArgs = [:]
+        appState.pendingSidebarItem = item
+        showMainWindow()
+    }
 
-        // 如果已有窗口，直接激活
-        if !NSApp.windows.isEmpty {
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-            for window in NSApp.windows {
-                window.makeKeyAndOrderFront(nil)
-            }
+    /// 激活 App 并显示主窗口：已有则置前（含最小化还原），没有则新建
+    private func showMainWindow() {
+        if NSApp.isHidden { NSApp.unhide(nil) }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = findMainWindow() {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
             return
         }
+        createMainWindow()
+    }
 
-        // accessory 模式下无窗口：创建主窗口
+    /// 查找主窗口：normal 层级且可见（或最小化到 Dock），排除中转站面板/横条/交互弹窗
+    private func findMainWindow() -> NSWindow? {
+        NSApp.windows.first { window in
+            guard window.isVisible || window.isMiniaturized else { return false }
+            guard window.level == .normal else { return false }
+            let id = window.identifier?.rawValue ?? ""
+            return id != "ShelfPanel" && id != "ShelfMinimizedPanel" && id != "InteractivePopup"
+        }
+    }
+
+    private func createMainWindow() {
         let hosting = NSHostingController(rootView: ContentView().environment(appState))
         let window = NSWindow(contentViewController: hosting)
         window.setContentSize(NSSize(width: 1000, height: 800))
@@ -354,8 +389,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titleVisibility = .hidden
         window.center()
         window.makeKeyAndOrderFront(nil)
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func windowWillClose(_ notification: Notification) {

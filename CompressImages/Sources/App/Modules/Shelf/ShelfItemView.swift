@@ -241,8 +241,7 @@ struct ShelfItemView: View {
                 Image(nsImage: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: size * 0.5, height: size * 0.5)
-                    .opacity(0.9)
+                    .frame(width: size * 0.6, height: size * 0.6)
             } else {
                 Image(systemName: fileTypeSFSymbol)
                     .font(.system(size: 32, weight: .light))
@@ -387,15 +386,35 @@ struct ShelfItemView: View {
 
     /// 加载系统文件图标（缓存到 @State，避免每次重绘都调用 NSWorkspace.shared.icon）
     private func loadFileTypeIcon() {
+        let path = item.url.path
         DispatchQueue.global(qos: .userInitiated).async {
             // NSWorkspace.shared.icon 在文件不存在时返回通用文档图标（非 nil）
             // 此处只对存在的文件获取真实图标
-            guard FileManager.default.fileExists(atPath: item.url.path) else { return }
-            let icon = NSWorkspace.shared.icon(forFile: item.url.path)
+            guard FileManager.default.fileExists(atPath: path) else { return }
+            let icon = NSWorkspace.shared.icon(forFile: path)
+            // 回主线程在浅色（Aqua）外观下栅格化：面板强制 vibrantDark，
+            // 否则系统图标里跟随外观的变体（如文件夹）会被渲染得偏暗、发闷
             DispatchQueue.main.async {
-                self.fileTypeIcon = icon
+                self.fileTypeIcon = Self.rasterizeInLightAppearance(icon) ?? icon
             }
         }
+    }
+
+    /// 在浅色外观下按 2x 栅格化图标，得到外观无关、始终明亮的位图。
+    /// 需在主线程调用（lockFocus 依赖）。
+    @MainActor
+    private static func rasterizeInLightAppearance(_ source: NSImage) -> NSImage? {
+        let size = source.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale: CGFloat = 2
+        let canvas = NSImage(size: NSSize(width: size.width * scale, height: size.height * scale))
+        canvas.lockFocus()
+        defer { canvas.unlockFocus() }
+        NSGraphicsContext.current?.imageInterpolation = .high
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            source.draw(in: NSRect(origin: .zero, size: canvas.size))
+        }
+        return canvas
     }
 }
 

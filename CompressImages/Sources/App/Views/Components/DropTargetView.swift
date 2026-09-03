@@ -42,7 +42,8 @@ class DropTargetNSView: NSView {
         isTargeted?.wrappedValue = false
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
               !urls.isEmpty else { return false }
-        for url in urls {
+        let existing = Set(imageItems?.wrappedValue.map { $0.url.path } ?? [])
+        for url in urls where ImageItem.isSupportedImage(url) && !existing.contains(url.path) {
             imageItems?.wrappedValue.append(ImageItem(url: url))
         }
         return true

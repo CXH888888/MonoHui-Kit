@@ -5,11 +5,15 @@ struct FormatConversionView: View {
     @State private var items: [FormatItem] = []
     @State private var isDropTargeted = false
     @State private var isConverting = false
-    @State private var results: [String] = []
+    @State private var statusMessage: String?
+    @State private var statusHasFailure = false
     @State private var showFilePicker = false
     @State private var hoveredItemID: UUID?
     @State private var targetFormat: TargetFormat = .png {
         didSet { UserDefaults.standard.set(targetFormat.rawValue, forKey: "format_target") }
+    }
+    @State private var trimEdges: Bool = UserDefaults.standard.bool(forKey: "format_trim_edges") {
+        didSet { UserDefaults.standard.set(trimEdges, forKey: "format_trim_edges") }
     }
 
     var body: some View {
@@ -21,11 +25,6 @@ struct FormatConversionView: View {
                     itemGrid
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    if !results.isEmpty {
-                        Divider().padding(.horizontal, 20)
-                        resultsList
-                    }
-
                     Divider()
                     bottomBar
                 }
@@ -34,7 +33,7 @@ struct FormatConversionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(.container, edges: .top)
         .background(Color.appleCanvas)
-        .background(FormatDropTargetView(items: $items, isTargeted: $isDropTargeted))
+        .background(FormatDropTargetView(items: $items, isTargeted: $isDropTargeted, statusMessage: $statusMessage))
         .onAppear {
             if let raw = UserDefaults.standard.string(forKey: "format_target"),
                let fmt = TargetFormat(rawValue: raw) {
@@ -45,7 +44,12 @@ struct FormatConversionView: View {
                       allowedContentTypes: [.image, .init(filenameExtension: "psd")!],
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
-                items = urls.map { FormatItem(url: $0) }
+                let newItems = urls.filter { ImageItem.isSupportedImage($0) }.map { FormatItem(url: $0) }
+                if !newItems.isEmpty {
+                    // 换新批次，清掉上一轮的状态提示
+                    items = newItems
+                    statusMessage = nil
+                }
             }
         }
     }
@@ -109,23 +113,32 @@ struct FormatConversionView: View {
         Button {
             showFilePicker = true
         } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .regular))
-                Text("添加")
-                    .font(.system(size: 13, weight: .regular))
+            VStack(spacing: 6) {
+                VStack(spacing: 8) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .regular))
+                    Text("添加")
+                        .font(.system(size: 13, weight: .regular))
+                }
+                .foregroundStyle(Color.appleSoft)
+                .frame(width: 116, height: 116)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.appleBorder, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+                .contentShape(Rectangle())
+
+                // 占位行：与文件卡片的文件名/状态两行同字体同间距，保证网格行内顶部对齐
+                Text(" ")
+                    .font(.system(size: 12, weight: .regular))
+                    .lineLimit(1)
+                    .frame(width: 116)
+                Text(" ")
+                    .font(.system(size: 11, weight: .medium))
             }
-            .foregroundStyle(Color.appleSoft)
-            .frame(width: 116, height: 116)
-            .background(Color.appleSurface2)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(Color.appleBorder, lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
-        .contentShape(Rectangle())
     }
 
     private func itemCard(item: FormatItem) -> some View {
@@ -133,18 +146,7 @@ struct FormatConversionView: View {
 
         return VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                ZStack {
-                    if let image = NSImage(contentsOf: item.url) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        Image(systemName: "doc.fill")
-                            .foregroundStyle(Color.appleSoft)
-                    }
-                }
-                .frame(width: 116, height: 116)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                ThumbnailView(url: item.url, size: 116, cornerRadius: 12)
 
                 if isHovered {
                     Button(action: { items.removeAll { $0.id == item.id } }) {
@@ -181,8 +183,8 @@ struct FormatConversionView: View {
             return formatFileSize(size)
         case .converting:
             return "转换中…"
-        case .completed(let url):
-            return "→ \(url.lastPathComponent)"
+        case .completed:
+            return formatFileSize(size)
         case .failed:
             return "失败"
         }
@@ -192,8 +194,6 @@ struct FormatConversionView: View {
         switch item.status {
         case .failed:
             return Color.red
-        case .completed:
-            return Color.appleSuccess
         default:
             return Color.appleSoft
         }
@@ -201,6 +201,13 @@ struct FormatConversionView: View {
 
     private var bottomBar: some View {
         VStack(spacing: 10) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(statusHasFailure ? Color.red : Color.appleSuccess)
+                    .frame(maxWidth: .infinity)
+            }
+
             HStack(spacing: 8) {
                 Text("转为")
                     .font(.system(size: 11, weight: .medium))
@@ -214,6 +221,11 @@ struct FormatConversionView: View {
                     )
                 }
                 Spacer(minLength: 0)
+
+                Toggle("裁剪空白", isOn: $trimEdges)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(.system(size: 12, weight: .regular))
 
                 Button(action: convert) {
                     HStack(spacing: 6) {
@@ -242,49 +254,30 @@ struct FormatConversionView: View {
         .background(Color.appleSurface)
     }
 
-    private var resultsList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(results, id: \.self) { line in
-                    Text(line)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .foregroundStyle(Color.appleSoft)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-        }
-        .frame(height: 120)
-        .background(Color.appleSurface)
-    }
-
     private func convert() {
         isConverting = true
-        results = []
+        statusMessage = nil
         let currentItems = items
 
         Task {
             let engine = FormatConversionEngine()
-            let converted = await engine.convert(items: currentItems, target: targetFormat)
+            let converted = await engine.convert(items: currentItems, target: targetFormat, trimEdges: trimEdges)
             await MainActor.run {
-                var lines: [String] = []
-                var successCount = 0
-                for item in converted {
-                    switch item.status {
-                    case .completed(let url):
-                        successCount += 1
-                        lines.append("\(item.fileName)  →  \(url.lastPathComponent)")
-                    case .failed(let err):
-                        lines.append("\(item.fileName)  ✕ \(err)")
-                    default:
-                        break
-                    }
+                let successCount = converted.filter {
+                    if case .completed = $0.status { return true }
+                    return false
+                }.count
+                let failedCount = converted.count - successCount
+                if failedCount == 0 {
+                    statusMessage = "转换成功（\(successCount) 个文件）"
+                    statusHasFailure = false
+                } else if successCount > 0 {
+                    statusMessage = "转换完成：成功 \(successCount) · 失败 \(failedCount)"
+                    statusHasFailure = true
+                } else {
+                    statusMessage = "转换失败"
+                    statusHasFailure = true
                 }
-                if successCount > 0 {
-                    lines.append("")
-                    lines.append("合计: 成功 \(successCount) / \(converted.count)")
-                }
-                results = lines
                 items = converted
                 isConverting = false
             }
@@ -302,11 +295,13 @@ struct FormatConversionView: View {
 private struct FormatDropTargetView: NSViewRepresentable {
     @Binding var items: [FormatItem]
     @Binding var isTargeted: Bool
+    @Binding var statusMessage: String?
 
     func makeNSView(context: Context) -> NSView {
         let view = FormatDropTargetNSView()
         view.items = $items
         view.isTargeted = $isTargeted
+        view.statusMessage = $statusMessage
         view.registerForDraggedTypes([.fileURL])
         return view
     }
@@ -321,6 +316,7 @@ private struct FormatDropTargetView: NSViewRepresentable {
 private class FormatDropTargetNSView: NSView {
     var items: Binding<[FormatItem]>?
     var isTargeted: Binding<Bool>?
+    var statusMessage: Binding<String?>?
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -341,8 +337,24 @@ private class FormatDropTargetNSView: NSView {
         isTargeted?.wrappedValue = false
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
               !urls.isEmpty else { return false }
-        // 每次拖入替换旧列表（与「选择文件」一致）
-        items?.wrappedValue = urls.map { FormatItem(url: $0) }
+        let newItems = urls.filter { ImageItem.isSupportedImage($0) }.map { FormatItem(url: $0) }
+        guard !newItems.isEmpty else { return true }
+
+        let hasCompleted = (items?.wrappedValue ?? []).contains { item in
+            if case .completed = item.status { return true }
+            return false
+        }
+        if hasCompleted {
+            // 上一批已转换成功：拖入视为开启新批次，清空旧文件与状态提示
+            items?.wrappedValue = newItems
+            statusMessage?.wrappedValue = nil
+        } else {
+            // 未转换时追加并按路径去重（与压缩窗口行为一致）
+            let existing = Set(items?.wrappedValue.map { $0.url.path } ?? [])
+            for item in newItems where !existing.contains(item.url.path) {
+                items?.wrappedValue.append(item)
+            }
+        }
         return true
     }
 

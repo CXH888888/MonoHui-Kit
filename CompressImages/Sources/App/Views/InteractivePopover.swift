@@ -54,20 +54,7 @@ struct InteractivePopover: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(previewItems) { item in
-                            VStack {
-                                if let nsImg = NSImage(contentsOf: item.url) {
-                                    Image(nsImage: nsImg)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 48, height: 48)
-                                } else {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.appleSurface2)
-                                        .frame(width: 48, height: 48)
-                                        .overlay(Image(systemName: "doc.fill").foregroundStyle(Color.appleSoft).font(.callout))
-                                }
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            ThumbnailView(url: item.url, size: 48, cornerRadius: 10)
                         }
                         if imageItems.count > 8 {
                             Text("+\(imageItems.count - 8)")

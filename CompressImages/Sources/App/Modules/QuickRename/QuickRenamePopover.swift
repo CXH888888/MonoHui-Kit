@@ -1,11 +1,133 @@
 import SwiftUI
 import AppKit
 
+// MARK: - 渠道行横向滚动（复用批量重命名更名预览的观察器方案，坐标轴换成水平）
+struct ChannelScrollGeom: Equatable {
+    var offset: CGFloat = 0         // 0 = 最左，向右滚动为正
+    var contentWidth: CGFloat = 0   // 内容总宽
+    var viewportWidth: CGFloat = 0  // 视口（可见区）宽度
+}
+
+final class ChannelScrollObserverView: NSView {
+    var onChange: ((ChannelScrollGeom) -> Void)?
+    private var observingClip = false
+    private var observingDoc = false
+    private var monitor: Any?
+    private var lastGeom: ChannelScrollGeom?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            startObservingIfNeeded()
+            installWheelMonitorIfNeeded()
+        } else {
+            removeWheelMonitor()
+        }
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        guard window != nil else { return }
+        startObservingIfNeeded()
+        // 布局完成后重读一次（等值守卫防循环）：标签增删会改变内容宽度
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollChanged()
+        }
+    }
+
+    deinit {
+        removeWheelMonitor()
+    }
+
+    private func startObservingIfNeeded() {
+        if !observingClip,
+           let clip = enclosingScrollView?.contentView {
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(scrollChanged),
+                name: NSView.boundsDidChangeNotification,
+                object: clip
+            )
+            observingClip = true
+        }
+        // 标签增删改变内容宽度时不触发 clip bounds 通知，需单独监听 documentView 的 frame 变化
+        if !observingDoc,
+           let doc = enclosingScrollView?.documentView {
+            doc.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(scrollChanged),
+                name: NSView.frameDidChangeNotification,
+                object: doc
+            )
+            observingDoc = true
+        }
+        scrollChanged()
+    }
+
+    @objc private func scrollChanged() {
+        guard let clip = enclosingScrollView?.contentView else { return }
+        let geom = ChannelScrollGeom(
+            offset: clip.bounds.origin.x,
+            contentWidth: clip.documentView?.frame.width ?? 0,
+            viewportWidth: clip.bounds.width
+        )
+        // 值未变化时不再回写，避免 viewWillDraw → 状态更新 → 重绘 的循环
+        guard geom != lastGeom else { return }
+        lastGeom = geom
+        onChange?(geom)
+    }
+
+    // macOS 横向 ScrollView 不响应竖向滚轮（触控板横向滑动原生支持），鼠标用户需转换
+    private func installWheelMonitorIfNeeded() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self,
+                  let clip = self.enclosingScrollView?.contentView,
+                  event.window === self.window,
+                  abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX)
+            else { return event }
+            // 仅当内容超宽（可横向滚动）且光标在滚动区内时接管
+            let contentWidth = clip.documentView?.frame.width ?? 0
+            guard contentWidth > clip.bounds.width + 1 else { return event }
+            let clipFrame = clip.convert(clip.bounds, to: nil)
+            guard clipFrame.contains(event.locationInWindow) else { return event }
+            let maxX = contentWidth - clip.bounds.width
+            let newX = min(max(clip.bounds.origin.x - event.scrollingDeltaY, 0), maxX)
+            clip.scroll(to: NSPoint(x: newX, y: 0))
+            return nil
+        }
+    }
+
+    private func removeWheelMonitor() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
+struct ChannelScrollObserver: NSViewRepresentable {
+    var onChange: (ChannelScrollGeom) -> Void
+
+    func makeNSView(context: Context) -> ChannelScrollObserverView {
+        let view = ChannelScrollObserverView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ view: ChannelScrollObserverView, context: Context) {
+        view.onChange = onChange
+    }
+}
+
 struct QuickRenamePopover: View {
     @Environment(AppState.self) var state
 
     // 目标文件 URL
     @State private var targetURL: URL?
+
+    // 目标文件图标（onAppear 时加载一次并缓存，避免 body 重算时反复调用 NSWorkspace 导致闪动）
+    @State private var fileIcon: NSImage?
 
     // 日期格式 pill（默认月日，空字符串 = 未选中）
     // 特殊值 "original" = 使用解析出的原日期
@@ -24,6 +146,8 @@ struct QuickRenamePopover: View {
     @FocusState private var newChannelFocused: Bool
     @State private var hoveringChannel: String?
     @FocusState private var customChannelFocused: Bool
+    // 渠道行横向滚动状态（标签超出后左右渐变提示）
+    @State private var channelScrollGeom = ChannelScrollGeom()
 
     // 名字输入
     @State private var namePart: String = ""
@@ -42,6 +166,8 @@ struct QuickRenamePopover: View {
     @State private var editingStatus: String?  // 右键改名的标签
     @State private var editingStatusText: String = ""
     @FocusState private var editingStatusFocused: Bool
+    // 状态卡网格滚动（标签超 2 行后内部滚动，复用批量弹窗的观察器方案）
+    @State private var statusScrollGeom = PreviewScrollGeom()
 
     // 重命名状态
     @State private var isRenaming = false
@@ -71,6 +197,13 @@ struct QuickRenamePopover: View {
         guard let data = customChannelsJSON.data(using: .utf8),
               let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return arr
+    }
+
+    // 渠道行渐变：已向右滚（离开最左）→ 左侧渐变；右侧还有内容 → 右侧渐变
+    private var channelLeftFade: Bool { channelScrollGeom.offset > 1 }
+    private var channelRightFade: Bool {
+        channelScrollGeom.contentWidth > 0 &&
+        channelScrollGeom.offset + channelScrollGeom.viewportWidth < channelScrollGeom.contentWidth - 1
     }
 
     private func saveCustomChannels(_ list: [String]) {
@@ -230,6 +363,8 @@ struct QuickRenamePopover: View {
             return
         }
         targetURL = url
+        // 仅取一次系统图标缓存到 @State，避免每次 body 重算创建新 NSImage 导致预览图标闪动
+        fileIcon = NSWorkspace.shared.icon(forFile: url.path)
 
         // 解析文件名
         let parsed = QuickRenameEngine.parse(
@@ -324,8 +459,8 @@ struct QuickRenamePopover: View {
     // MARK: - fileInfoArea
     private var fileInfoArea: some View {
         HStack(spacing: 12) {
-            if let url = targetURL {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            if let fileIcon {
+                Image(nsImage: fileIcon)
                     .resizable()
                     .frame(width: 32, height: 32)
             }
@@ -380,147 +515,173 @@ struct QuickRenamePopover: View {
                 Spacer(minLength: 0)
             }
 
-            // 渠道行
+            // 渠道行（标签区横向滚动：超出后左右渐变提示，参考批量重命名更名预览）
             HStack(spacing: 10) {
                 Text("渠道")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.appleSoft)
                     .frame(width: 28, alignment: .leading)
-                ForEach(["线上", "线下"], id: \.self) { ch in
-                    PillButton(
-                        label: ch,
-                        isSelected: channel == ch,
-                        action: {
-                            channel = (channel == ch) ? "" : ch
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(["线上", "线下"], id: \.self) { ch in
+                            PillButton(
+                                label: ch,
+                                isSelected: channel == ch,
+                                action: {
+                                    channel = (channel == ch) ? "" : ch
+                                }
+                            )
                         }
-                    )
-                }
-                ForEach(customChannels, id: \.self) { ch in
-                    customChannelPill(ch)
-                }
-                if channel == "其他" {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 10, weight: .regular))
-                            .foregroundStyle(Color.appleBlue)
-                        TextField("输入", text: $customChannel)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(Color.appleInk)
-                            .frame(width: 60)
-                            .focused($customChannelFocused)
-                            .onSubmit { rename() }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: 32)
-                    .background(Color.appleSurface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.appleBlue, lineWidth: 1.5)
-                    )
-                    .overlay(alignment: .trailing) {
-                        Button {
-                            channel = ""
-                            customChannelFocused = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Color.appleSoft)
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
+                        ForEach(customChannels, id: \.self) { ch in
+                            customChannelPill(ch)
                         }
-                        .buttonStyle(.plain)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onAppear { customChannelFocused = true }
-                } else {
-                    Button {
-                        channel = "其他"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            customChannelFocused = true
-                        }
-                    } label: {
-                        Text("其他")
-                            .font(.system(size: 12, weight: .regular))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .foregroundStyle(Color.appleInk)
+                        if channel == "其他" {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundStyle(Color.appleBlue)
+                                TextField("输入", text: $customChannel)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.center)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Color.appleInk)
+                                    .frame(width: 60)
+                                    .focused($customChannelFocused)
+                                    .onSubmit { rename() }
+                            }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .frame(minHeight: 32)
-                            .background(Color.appleSurface3)
+                            .background(Color.appleSurface2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.appleBlue, lineWidth: 1.5)
+                            )
+                            .overlay(alignment: .trailing) {
+                                Button {
+                                    channel = ""
+                                    customChannelFocused = false
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(Color.appleSoft)
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
                             .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                if isAddingChannel {
-                    HStack(spacing: 4) {
-                        TextField("输入标签名", text: $newChannelInput)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(Color.appleInk)
-                            .frame(width: 70)
-                            .focused($newChannelFocused)
-                            .onSubmit { addChannel() }
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(height: 32)
-                    .background(Color.appleSurface2)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.appleBlue, lineWidth: 1.5)
-                    )
-                    .overlay(alignment: .trailing) {
-                        Button {
-                            isAddingChannel = false
-                            newChannelInput = ""
-                            newChannelFocused = false
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(Color.appleSoft)
-                                .frame(width: 28, height: 28)
-                                .contentShape(Rectangle())
+                            .onAppear { customChannelFocused = true }
+                        } else {
+                            Button {
+                                channel = "其他"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    customChannelFocused = true
+                                }
+                            } label: {
+                                Text("其他")
+                                    .font(.system(size: 12, weight: .regular))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .foregroundStyle(Color.appleInk)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .frame(minHeight: 32)
+                                    .background(Color.appleSurface3)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            newChannelFocused = true
-                        }
-                    }
-                } else {
-                    Button {
-                        isAddingChannel = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 10, weight: .regular))
-                            Text("新增")
-                                .font(.system(size: 12, weight: .regular))
-                        }
-                        .foregroundStyle(Color.appleSoft.opacity(0.7))
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(Color.clear)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(
-                                    Color.appleSoft.opacity(0.35),
-                                    style: StrokeStyle(
-                                        lineWidth: 1,
-                                        dash: [4, 3]
-                                    )
+                        if isAddingChannel {
+                            HStack(spacing: 4) {
+                                TextField("输入标签名", text: $newChannelInput)
+                                    .textFieldStyle(.plain)
+                                    .multilineTextAlignment(.center)
+                                    .font(.system(size: 12, weight: .regular))
+                                    .foregroundStyle(Color.appleInk)
+                                    .frame(width: 70)
+                                    .focused($newChannelFocused)
+                                    .onSubmit { addChannel() }
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(Color.appleSurface2)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.appleBlue, lineWidth: 1.5)
+                            )
+                            .overlay(alignment: .trailing) {
+                                Button {
+                                    isAddingChannel = false
+                                    newChannelInput = ""
+                                    newChannelFocused = false
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(Color.appleSoft)
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    newChannelFocused = true
+                                }
+                            }
+                        } else {
+                            Button {
+                                isAddingChannel = true
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 10, weight: .regular))
+                                    Text("新增")
+                                        .font(.system(size: 12, weight: .regular))
+                                }
+                                .foregroundStyle(Color.appleSoft.opacity(0.7))
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                                .background(Color.clear)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(
+                                            Color.appleSoft.opacity(0.35),
+                                            style: StrokeStyle(
+                                                lineWidth: 1,
+                                                dash: [4, 3]
+                                            )
+                                        )
                                 )
-                        )
-                        .contentShape(Rectangle())
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
+                    .background(
+                        ChannelScrollObserver { geom in
+                            channelScrollGeom = geom
+                        }
+                    )
                 }
-                Spacer(minLength: 0)
+                // 左渐变：已向右滚动（离开最左）时浮现，避免内容生硬截断
+                .overlay(alignment: .leading) {
+                    LinearGradient(colors: [Color.appleCanvas, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                        .allowsHitTesting(false)
+                        .opacity(channelLeftFade ? 1 : 0)
+                        .animation(.easeOut(duration: 0.12), value: channelLeftFade)
+                }
+                // 右渐变：右侧还有未看完的内容时浮现，提示可滚动
+                .overlay(alignment: .trailing) {
+                    LinearGradient(colors: [.clear, Color.appleCanvas], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                        .allowsHitTesting(false)
+                        .opacity(channelRightFade ? 1 : 0)
+                        .animation(.easeOut(duration: 0.12), value: channelRightFade)
+                }
             }
         }
     }
@@ -719,20 +880,50 @@ struct QuickRenamePopover: View {
                 }
             }
 
-            // 状态标签网格（3列，等宽）
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 6),
-                GridItem(.flexible(), spacing: 6),
-                GridItem(.flexible(), spacing: 6)
-            ], spacing: 6) {
-                ForEach(allStatuses, id: \.self) { st in
-                    statusPill(st)
+            // 状态标签网格（3列等宽；超过 2 行后内部滚动，顶/底渐变）
+            ScrollView(.vertical, showsIndicators: false) {
+                // 外层 VStack 保障 documentView 高度上报可靠（同批量弹窗编辑器方案）
+                VStack(alignment: .leading, spacing: 0) {
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(), spacing: 6),
+                        GridItem(.flexible(), spacing: 6),
+                        GridItem(.flexible(), spacing: 6)
+                    ], spacing: 6) {
+                        ForEach(allStatuses, id: \.self) { st in
+                            statusPill(st)
+                        }
+                        if isAddingStatus {
+                            statusAddInput
+                        } else {
+                            statusAddButton
+                        }
+                    }
                 }
-                if isAddingStatus {
-                    statusAddInput
-                } else {
-                    statusAddButton
-                }
+                .frame(minHeight: Self.statusGridViewportHeight, alignment: .top)
+                .background(
+                    PreviewScrollObserver { geom in
+                        if statusScrollGeom != geom {
+                            statusScrollGeom = geom
+                        }
+                    }
+                )
+            }
+            .frame(height: Self.statusGridViewportHeight)
+            // 顶部渐变：滚动离开顶部后浮现（遮罩色 = 卡片底合成到弹窗底的不透明等效色）
+            .overlay(alignment: .top) {
+                LinearGradient(colors: [Color.appleCardOnCanvas, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.statusGridFadeHeight)
+                    .allowsHitTesting(false)
+                    .opacity(statusTopFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: statusTopFade)
+            }
+            // 底部渐变：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [.clear, Color.appleCardOnCanvas], startPoint: .top, endPoint: .bottom)
+                    .frame(height: Self.statusGridFadeHeight)
+                    .allowsHitTesting(false)
+                    .opacity(statusBottomFade ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: statusBottomFade)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
@@ -755,10 +946,23 @@ struct QuickRenamePopover: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    /// 状态网格视口固定高度（2 行：28 × 2 + 间距 6）
+    private static let statusGridViewportHeight: CGFloat = 62
+    /// 状态网格渐变高度：与批量弹窗编辑器一致（28pt 行高的约 1/3）
+    private static let statusGridFadeHeight: CGFloat = 10
+
+    private var statusTopFade: Bool { statusScrollGeom.offset > 1 }
+
+    // 与批量更名预览 showPreviewBottomFade 完全一致的单行表达式
+    private var statusBottomFade: Bool {
+        statusScrollGeom.contentHeight - statusScrollGeom.viewportHeight - statusScrollGeom.offset > 1
+    }
+
     // 状态新增输入框
     private var statusAddInput: some View {
         TextField("输入", text: $newStatusInput)
             .textFieldStyle(.plain)
+            .multilineTextAlignment(.center)
             .font(.system(size: 12, weight: .regular))
             .foregroundStyle(Color.appleInk)
             .frame(height: 28)
@@ -815,6 +1019,7 @@ struct QuickRenamePopover: View {
         if isEditing {
             TextField("改名", text: $editingStatusText)
                 .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Color.appleInk)
                 .frame(height: 28)
