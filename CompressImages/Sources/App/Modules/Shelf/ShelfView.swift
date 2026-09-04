@@ -9,6 +9,8 @@ struct ShelfView: View {
     @State private var showClearConfirm: Bool = false
     @State private var showRename: Bool = false
     @State private var renameName: String = "未命名文件夹"
+    /// 文件列表滚动状态（供顶/底渐变遮罩判断）
+    @State private var shelfScrollGeom = PreviewScrollGeom()
     @State private var renameItemId: UUID? = nil
     @State private var renameAnchorY: CGFloat? = nil
     @State private var keyMonitor: Any?
@@ -24,6 +26,59 @@ struct ShelfView: View {
 
     /// 面板宽度（用 @AppStorage 监听 UserDefaults 变化，设置页修改时自动重绘）
     @AppStorage("shelf_panel_width") private var panelWidth: Double = 140
+
+    /// 面板不透明纯色底色（去毛玻璃，让背景与顶/底渐变遮罩取色一致）
+    private var panelBase: Color { Color(red: 0.13, green: 0.13, blue: 0.14) }
+
+    /// 渐变遮罩色：与面板底色完全一致，滚动时淡出才能无缝贴合
+    private var fadeMask: Color { panelBase }
+
+    /// 顶部渐变：已向下滚动（离开顶部）时显示
+    private var showListTopFade: Bool { shelfScrollGeom.offset > 1 }
+
+    /// 底部渐变：下方还有未看完的内容时显示
+    private var showListBottomFade: Bool {
+        shelfScrollGeom.contentHeight - shelfScrollGeom.viewportHeight - shelfScrollGeom.offset > 1
+    }
+
+    // MARK: - 文件列表（超出可见区滚动 + 顶/底渐变遮罩，不显示滚动条）
+
+    private var fileList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 8) {
+                ForEach(store.items) { item in
+                    ShelfItemView(item: item, store: store)
+                        .transition(
+                            .scale(scale: 0.8).combined(with: .opacity)
+                        )
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .background(
+                // AppKit 观察器驱动滚动状态（与批量重命名更名预览同款方案）
+                PreviewScrollObserver { geom in
+                    shelfScrollGeom = geom
+                }
+            )
+        }
+        // 顶部渐变遮罩：已向下滚动（离开顶部）时浮现，提示上方还有内容
+        .overlay(alignment: .top) {
+            LinearGradient(colors: [fadeMask, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: 14)
+                .allowsHitTesting(false)
+                .opacity(showListTopFade ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: showListTopFade)
+        }
+        // 底部渐变遮罩：下方还有未看完的内容时浮现，提示可继续滚动
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [.clear, fadeMask], startPoint: .top, endPoint: .bottom)
+                .frame(height: 14)
+                .allowsHitTesting(false)
+                .opacity(showListBottomFade ? 1 : 0)
+                .animation(.easeOut(duration: 0.12), value: showListBottomFade)
+        }
+    }
 
     /// 数量 badge 颜色随文件数变化
     private var countColor: Color {
@@ -50,10 +105,6 @@ struct ShelfView: View {
                     .transition(.opacity)
             }
 
-            Divider()
-                .background(Color.white.opacity(0.15))
-                .padding(.horizontal, 8)
-
             // 中部：文件项列表
             // 空状态：用 Color.clear 占据 VStack 中部所有剩余空间，再 overlay 虚线占位符
             // （.frame(maxHeight:.infinity) 在 VStack 内对带 .background 的子视图可能不生效，
@@ -67,24 +118,9 @@ struct ShelfView: View {
                     .padding(.vertical, 8)
                     .layoutPriority(1)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 8) {
-                        ForEach(store.items) { item in
-                            ShelfItemView(item: item, store: store)
-                                .transition(
-                                    .scale(scale: 0.8).combined(with: .opacity)
-                                )
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
-                }
-                .layoutPriority(1)
+                fileList
+                    .layoutPriority(1)
             }
-
-            Divider()
-                .background(Color.white.opacity(0.15))
-                .padding(.horizontal, 8)
 
             // 底部双投递区（AirDrop + 压缩暂存，一行两个正方形）
             HStack(spacing: 6) {
@@ -102,24 +138,14 @@ struct ShelfView: View {
         }
         .frame(width: panelWidth, height: panelHeight)
         .background(
-            // 毛玻璃模糊背景：左侧直角 + 右侧圆角（紧贴屏幕左边缘）
+            // 纯色不透明背景（去掉毛玻璃，才能让顶/底渐变遮罩与底色严格一致）；左侧直角 + 右侧圆角（紧贴屏幕左边缘）
             UnevenRoundedRectangle(
                 topLeadingRadius: 0,
                 bottomLeadingRadius: 0,
                 bottomTrailingRadius: 12,
                 topTrailingRadius: 12
             )
-            .fill(.ultraThinMaterial)
-            .overlay(
-                // 黑色叠加保持暗色调
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 12,
-                    topTrailingRadius: 12
-                )
-                .fill(Color.black.opacity(0.55))
-            )
+            .fill(panelBase)
             .overlay(
                 UnevenRoundedRectangle(
                     topLeadingRadius: 0,
