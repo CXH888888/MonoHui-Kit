@@ -225,6 +225,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let launchedByService = isLaunchedByServiceMenu
+        // 登录项自启：无「打开」AppleEvent 且开启了热键常驻 → 只驻留菜单栏，不弹主窗口
+        // SMAppService.mainApp 自启不会携带打开事件（Dock/启动台/`open -a` 都会带 kAEOpenApplication）
+        let isLoginAutoLaunch = module.isEmpty
+            && appState.hotKeyEnabled
+            && NSAppleEventManager.shared().currentAppleEvent == nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // 交互弹窗模式：把弹窗窗口置顶 + 居中
             let isInteractive = (module == "compress" && moduleArgs["mode"] == "interactive")
@@ -246,6 +251,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         window.makeKeyAndOrderFront(nil)
                     }
                 }
+            }
+            // 登录项自启：关掉 WindowGroup 默认弹出的主窗口，驻留菜单栏，不抢占前台
+            if isLoginAutoLaunch {
+                NSApp.setActivationPolicy(.accessory)
+                for window in NSApplication.shared.windows where window.level == .normal {
+                    window.close()
+                }
+                return
             }
             NSApp.activate(ignoringOtherApps: true)
         }
