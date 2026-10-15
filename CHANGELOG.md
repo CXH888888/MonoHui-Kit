@@ -8,6 +8,8 @@
 - 压缩后偏色：JPEG 有损链路（djpeg | cjpeg）不传递 ICC profile，带 Adobe RGB / Display P3 等非 sRGB profile 的源文件压缩后丢失色彩解释、被查看器按 sRGB 渲染而整体偏色；编码完成后将源 profile 以标准 APP2 "ICC_PROFILE" marker 回写输出（`Engine/ColorProfileKit.swift`，纯字节级写入，不重新编码像素）
 - PNG 质量档位与 UI 标称值不一致：UI 显示「中（75）」实际传给 pngquant 的是 `--quality=50-65`；全档位上调为与标称值对齐的区间（最高 85-100 / 高 75-90 / 中 65-80 / 低 40-55 / 极低 10-30）
 - pngquant 在即使 256 色也达不到质量下限时会跳过文件（退出码 99、无输出），导致误报「工具返回错误码 99」；此时先放宽区间（20-100）重试，仍被跳过则退回 oxipng 无损重编码，保证必有产物
+- PNG 重复压缩报「压缩工具返回错误码: 15」：pngquant 默认拒绝覆盖已存在的输出文件；两处调用加 `--force`，允许刷新同名输出（oxipng 无损档无此问题，本就覆盖）
+- 压缩失败信息现在附带工具 stderr 原文（如 `error: 'xxx' exists; not overwriting`），不再只有一个光秃秃的退出码
 
 ### 优化
 - mozjpeg 色度抽样由默认 4:2:0 改为 4:4:4（cjpeg `-sample 1x1,1x1,1x1`），彩色边缘与暖色细节不再因色度分辨率减半而糊化；代价为 JPEG 体积增大约 10~16%，可在 `ToolResolver.swift` 顶部 `mozjpegChromaSampling` 常量改回
