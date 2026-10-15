@@ -1,5 +1,10 @@
 import Foundation
 
+/// mozjpeg 色度抽样参数（Y,Cb,Cr 三分量采样因子）。
+/// libjpeg 默认 4:2:0（色度分辨率减半），高对比彩色边缘与暖色细节会糊化；
+/// 改为 1x1 即 4:4:4，最大限度保住色彩，代价是体积增大约 10~16%。
+private let mozjpegChromaSampling = "1x1,1x1,1x1"
+
 struct ToolResolver {
     let toolsDir: String
     var libDir: String { "\(toolsDir)/lib" }
@@ -52,7 +57,7 @@ struct ToolResolver {
                     let ei = input.replacingOccurrences(of: "'", with: "'\\''")
                     let eo = output.replacingOccurrences(of: "'", with: "'\\''")
                     let ld = libDir.replacingOccurrences(of: "'", with: "'\\''")
-                    args = ["-c", "export DYLD_LIBRARY_PATH='\(ld)'; '\(toolsDir)/djpeg' '\(ei)' | '\(toolsDir)/cjpeg' -quality \(q) -outfile '\(eo)' /dev/stdin"]
+                    args = ["-c", "export DYLD_LIBRARY_PATH='\(ld)'; '\(toolsDir)/djpeg' '\(ei)' | '\(toolsDir)/cjpeg' -quality \(q) -sample \(mozjpegChromaSampling) -outfile '\(eo)' /dev/stdin"]
                 }
             } else {
                 proc.executableURL = URL(fileURLWithPath: "/usr/bin/sips")
@@ -93,18 +98,39 @@ struct ToolResolver {
             proc.standardOutput = outfile
         }
 
-        proc.arguments = args
-        return proc
-    }
+    proc.arguments = args
+    return proc
+}
+
+/// pngquant 在即使 256 色也达不到质量下限时会跳过文件（退出码 99、无输出）。
+/// 此时改用宽松区间重试，保证一定产出文件（色彩仍由 pngquant 自行决定）。
+func buildPNGRetryProcess(input: String, output: String) -> Process {
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/pngquant")
+    proc.arguments = ["--quality=20-100", "--output", output, "--", input]
+    return proc
+}
+
+/// PNG 无损重编码（oxipng）。pngquant 两次都无法产出时的兜底，保证必有文件。
+func buildLosslessProcess(input: String, output: String) -> Process {
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/oxipng")
+    proc.arguments = ["-o", "4", "--strip", "safe", "--out", output, input]
+    return proc
+}
 }
 
 private func pngQualityArg(_ q: QualityLevel) -> String {
+    // pngquant --quality=min-max 中 min 为质量下限：min 越高色板越大、越保色。
+    // 区间与 QualityLevel.displayName 的标称值对齐（例如「中（75）」→ 65-80）。
+    // 注意：若某张图即使 256 色也达不到 min，pngquant 会跳过该文件（无输出），
+    // 此时由 CompressionEngine 用 buildPNGRetryProcess 放宽区间重试。
     switch q {
     case .lossless: return "100"
-    case .highest:  return "80-95"
-    case .high:     return "65-80"
-    case .medium:   return "50-65"
-    case .low:      return "30-50"
+    case .highest:  return "85-100"
+    case .high:     return "75-90"
+    case .medium:   return "65-80"
+    case .low:      return "40-55"
     case .lowest:   return "10-30"
     }
 }
@@ -121,13 +147,14 @@ private func jpegQualityValue(_ q: QualityLevel) -> Int {
 }
 
 private func gifColorCount(_ q: QualityLevel) -> Int {
+    // GIF 调色板上限 256 色，中档从 128 提到 192，减少减色造成的色偏
     switch q {
     case .lossless: return 256
     case .highest:  return 256
-    case .high:     return 200
-    case .medium:   return 128
-    case .low:      return 64
-    case .lowest:   return 32
+    case .high:     return 224
+    case .medium:   return 192
+    case .low:      return 128
+    case .lowest:   return 64
     }
 }
 

@@ -62,29 +62,32 @@ actor CompressionEngine {
                 output: outputPath
             )
 
-            if toolResolver.libExists {
-                var env = ProcessInfo.processInfo.environment
-                env["DYLD_LIBRARY_PATH"] = toolResolver.libDir
-                proc.environment = env
+            var outputData: Data
+            do {
+                outputData = try await run(proc, outputURL: outputURL)
+            } catch CompressionEngine.CompressionError.skipped
+                where format == .png && quality != .lossless {
+                // pngquant 退出码 99 = 该图即使 256 色也达不到质量下限。
+                // 先放宽质量区间重试；仍被跳过则退回 oxipng 无损重编码，保证必有产物。
+                let retryProc = toolResolver.buildPNGRetryProcess(
+                    input: inputPath, output: outputPath)
+                do {
+                    outputData = try await run(retryProc, outputURL: outputURL)
+                } catch CompressionEngine.CompressionError.skipped {
+                    let fallbackProc = toolResolver.buildLosslessProcess(
+                        input: inputPath, output: outputPath)
+                    outputData = try await run(fallbackProc, outputURL: outputURL)
+                }
             }
 
-            let outputData = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
-                proc.terminationHandler = { process in
-                    if process.terminationStatus == 0 {
-                        if let data = try? Data(contentsOf: outputURL) {
-                            cont.resume(returning: data)
-                        } else {
-                            cont.resume(throwing: CompressionError.toolFailed(process.terminationStatus))
-                        }
-                    } else {
-                        cont.resume(throwing: CompressionError.toolFailed(process.terminationStatus))
-                    }
-                }
-                do {
-                    try proc.run()
-                } catch {
-                    cont.resume(throwing: error)
-                }
+            // JPEG 有损链路（djpeg | cjpeg）不传递 ICC profile，
+            // 编码后把源 profile 写回输出，避免 Adobe RGB / Display P3 等
+            // 源文件被查看器按 sRGB 解释而整体偏色。
+            // jpegtran 无损档用 -copy all 保留全部 marker，无需回写。
+            if format == .jpeg, quality != .lossless,
+               let profile = ColorProfileKit.profile(of: item.url) {
+                ColorProfileKit.embedProfile(profile, intoJPEGAt: outputURL)
+                outputData = (try? Data(contentsOf: outputURL)) ?? outputData
             }
 
             let inputSize = item.fileSize
@@ -102,6 +105,37 @@ actor CompressionEngine {
         return updated
     }
 
+    /// 执行压缩进程并读取输出。自带 DYLD_LIBRARY_PATH 注入。
+    private func run(_ proc: Process, outputURL: URL) async throws -> Data {
+        if toolResolver.libExists {
+            var env = ProcessInfo.processInfo.environment
+            env["DYLD_LIBRARY_PATH"] = toolResolver.libDir
+            proc.environment = env
+        }
+
+        return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
+            proc.terminationHandler = { process in
+                if process.terminationStatus == 99 {
+                    // pngquant 专用退出码：该图即使 256 色也达不到质量下限而跳过
+                    cont.resume(throwing: CompressionError.skipped)
+                } else if process.terminationStatus == 0 {
+                    if let data = try? Data(contentsOf: outputURL) {
+                        cont.resume(returning: data)
+                    } else {
+                        cont.resume(throwing: CompressionError.outputMissing)
+                    }
+                } else {
+                    cont.resume(throwing: CompressionError.toolFailed(process.terminationStatus))
+                }
+            }
+            do {
+                try proc.run()
+            } catch {
+                cont.resume(throwing: error)
+            }
+        }
+    }
+
     private func determineOutputURL(for item: ImageItem, format: CompressionFormat, quality: QualityLevel) throws -> URL {
         let sourceDir = item.url.deletingLastPathComponent()
         let baseName = item.url.deletingPathExtension().lastPathComponent
@@ -115,12 +149,16 @@ actor CompressionEngine {
         case toolFailed(Int32)
         case invalidInput
         case outputExists
+        case outputMissing
+        case skipped
 
         var errorDescription: String? {
             switch self {
             case .toolFailed(let code): return "压缩工具返回错误码: \(code)"
             case .invalidInput: return "不支持的输入文件"
             case .outputExists: return "输出文件已存在"
+            case .outputMissing: return "压缩工具未生成输出文件"
+            case .skipped: return "图片色彩过于复杂，该质量档无法保证画质，已跳过"
             }
         }
     }
