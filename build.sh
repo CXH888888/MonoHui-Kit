@@ -172,6 +172,11 @@ echo "✍️  签名..."
 SIGNING_IDENTITY="QuickActions Local Signing"
 # 搜索证书指纹或名称 - 即使证书不被信任也能找到
 CERT_FINGERPRINT=$(security find-identity -p codesigning 2>/dev/null | grep -E "[0-9A-F]{40}" | grep "$SIGNING_IDENTITY" | awk '{print $2}')
+if [ -z "$CERT_FINGERPRINT" ]; then
+    # 自签名证书未被系统信任（"始终信任"）时不会出现在 -p codesigning 列表中，
+    # 回退到全量身份列表按名称查找，避免误退化成 ad-hoc 签名导致 TCC 权限失效
+    CERT_FINGERPRINT=$(security find-identity 2>/dev/null | grep -E "[0-9A-F]{40}" | grep "$SIGNING_IDENTITY" | awk '{print $2}')
+fi
 if [ -n "$CERT_FINGERPRINT" ]; then
     echo "   使用本地证书: $SIGNING_IDENTITY"
     codesign --force --sign "$CERT_FINGERPRINT" --options runtime "$APP_BUNDLE"
