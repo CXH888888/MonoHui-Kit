@@ -105,7 +105,8 @@ actor CompressionEngine {
         return updated
     }
 
-    /// 执行压缩进程并读取输出。自带 DYLD_LIBRARY_PATH 注入。
+    /// 执行压缩进程并读取输出。自带 DYLD_LIBRARY_PATH 注入，并捕获 stderr
+    /// 以便失败时把工具的真实报错（如输出文件已存在）展示给用户。
     private func run(_ proc: Process, outputURL: URL) async throws -> Data {
         if toolResolver.libExists {
             var env = ProcessInfo.processInfo.environment
@@ -113,8 +114,13 @@ actor CompressionEngine {
             proc.environment = env
         }
 
+        let stderrPipe = Pipe()
+        proc.standardError = stderrPipe
+
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             proc.terminationHandler = { process in
+                let stderrText = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if process.terminationStatus == 99 {
                     // pngquant 专用退出码：该图即使 256 色也达不到质量下限而跳过
                     cont.resume(throwing: CompressionError.skipped)
@@ -125,7 +131,7 @@ actor CompressionEngine {
                         cont.resume(throwing: CompressionError.outputMissing)
                     }
                 } else {
-                    cont.resume(throwing: CompressionError.toolFailed(process.terminationStatus))
+                    cont.resume(throwing: CompressionError.toolFailed(process.terminationStatus, stderrText))
                 }
             }
             do {
@@ -146,7 +152,7 @@ actor CompressionEngine {
     }
 
     enum CompressionError: Error, LocalizedError {
-        case toolFailed(Int32)
+        case toolFailed(Int32, String)
         case invalidInput
         case outputExists
         case outputMissing
@@ -154,7 +160,10 @@ actor CompressionEngine {
 
         var errorDescription: String? {
             switch self {
-            case .toolFailed(let code): return "压缩工具返回错误码: \(code)"
+            case .toolFailed(let code, let message):
+                // message 为工具 stderr 原文，失败时一并展示，便于定位
+                let detail = message.isEmpty ? "" : " — \(message)"
+                return "压缩工具返回错误码: \(code)\(detail)"
             case .invalidInput: return "不支持的输入文件"
             case .outputExists: return "输出文件已存在"
             case .outputMissing: return "压缩工具未生成输出文件"

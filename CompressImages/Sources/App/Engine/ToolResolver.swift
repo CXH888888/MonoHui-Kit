@@ -39,7 +39,9 @@ struct ToolResolver {
             } else {
                 let qualityArg = pngQualityArg(quality)
                 proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/pngquant")
-                args = ["--quality=\(qualityArg)", "--output", output, "--", input]
+                // --force：pngquant 默认拒绝覆盖已存在的输出（退出码 15），
+                // 重复压缩同一张图时允许刷新输出文件
+                args = ["--force", "--quality=\(qualityArg)", "--output", output, "--", input]
             }
 
         case .jpeg:
@@ -107,7 +109,7 @@ struct ToolResolver {
 func buildPNGRetryProcess(input: String, output: String) -> Process {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/pngquant")
-    proc.arguments = ["--quality=20-100", "--output", output, "--", input]
+    proc.arguments = ["--force", "--quality=20-100", "--output", output, "--", input]
     return proc
 }
 
