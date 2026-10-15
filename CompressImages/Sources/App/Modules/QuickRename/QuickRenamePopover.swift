@@ -701,8 +701,11 @@ struct QuickRenamePopover: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(minHeight: 32)
-        .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        // 圆角背景用 shape 画（不再用 clipShape，避免裁到右上角溢出的删除按钮）
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
+        )
         .overlay(alignment: .topTrailing) {
             if isHovering {
                 Button {
@@ -711,8 +714,11 @@ struct QuickRenamePopover: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(.white, Color.red.opacity(0.9))
-                        .background(Circle().fill(Color.appleCanvas))
-                        .offset(x: 5, y: -5)
+                        .background(
+                            Circle()
+                                .fill(Color.appleCanvas)
+                                .frame(width: 18, height: 18)
+                        )
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity.combined(with: .scale))
@@ -1044,8 +1050,11 @@ struct QuickRenamePopover: View {
                 .foregroundStyle(isSelected ? .white : Color.appleInk)
                 .frame(height: 28)
                 .frame(maxWidth: .infinity)
-                .background(isSelected ? Color.appleBlue : Color.appleSurface2)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                // 圆角背景用 shape 画（不再用 clipShape，避免裁到右上角溢出的删除按钮）
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
+                )
                 .overlay(alignment: .topTrailing) {
                     if isHovering && !QuickRenameEngine.defaultStatuses.contains(st) {
                         Button {
@@ -1054,8 +1063,11 @@ struct QuickRenamePopover: View {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundStyle(.white, Color.red.opacity(0.9))
-                                .background(Circle().fill(Color.appleCanvas))
-                                .offset(x: 4, y: -4)
+                                .background(
+                                    Circle()
+                                        .fill(Color.appleCanvas)
+                                        .frame(width: 18, height: 18)
+                                )
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity.combined(with: .scale))

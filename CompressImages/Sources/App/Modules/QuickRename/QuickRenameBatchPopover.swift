@@ -1379,16 +1379,16 @@ struct QuickRenameBatchPopover: View {
         let isSelected = channel == ch
         let isHovering = hoveringChannel == ch
         ZStack(alignment: .topTrailing) {
-            // 圆角背景（独立于 ZStack，不裁剪删除按钮溢出的边角）
+            // 圆角背景（独立，不裁剪任何前景内容）
             RoundedRectangle(cornerRadius: 6)
                 .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
-            // 文字（填满 ZStack 高度后内部居中，避免受 topTrailing 对齐影响贴顶）
+            // 文字（撑满网格列居中，不被红叉遮挡）
             Text(ch)
                 .font(.system(size: 12, weight: .regular))
                 .lineLimit(1)
                 .foregroundStyle(isSelected ? .white : Color.appleInk)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 删除按钮（悬停浮现，可轻微溢出 pill 右上角而不被圆角裁切）
+            // 删除按钮：骑在标签右上角、向外突出（经典角标），纯淡入即时出现
             if isHovering {
                 Button {
                     deleteChannel(ch)
@@ -1396,11 +1396,17 @@ struct QuickRenameBatchPopover: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(.white, Color.red.opacity(0.9))
-                        .background(Circle().fill(Color.appleCanvas))
-                        .offset(x: 4, y: -4)
+                        .background(
+                            Circle()
+                                .fill(Color.appleCanvas)
+                                .frame(width: 18, height: 18)
+                        )
                 }
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+                .offset(x: 6, y: -6)
                 .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale))
+                .transition(.opacity)
                 .help("删除「\(ch)」")
             }
         }
@@ -1520,16 +1526,16 @@ struct QuickRenameBatchPopover: View {
         let isCustom = !QuickRenameEngine.defaultStatuses.contains(st)
         let isHovering = hoveringStatus == st
         ZStack(alignment: .topTrailing) {
-            // 圆角背景（独立于 ZStack，不裁剪删除按钮溢出的边角）
+            // 圆角背景（独立，不裁剪任何前景内容）
             RoundedRectangle(cornerRadius: 6)
                 .fill(isSelected ? Color.appleBlue : Color.appleSurface2)
-            // 文字
+            // 文字（撑满网格列居中，不被红叉遮挡）
             Text(st)
                 .font(.system(size: 12, weight: .regular))
                 .lineLimit(1)
                 .foregroundStyle(isSelected ? .white : Color.appleInk)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // 删除按钮（仅自定义状态悬停浮现，可轻微溢出 pill 右上角而不被圆角裁切）
+            // 删除按钮：骑在标签右上角、向外突出（仅自定义状态），纯淡入即时出现
             if isCustom && isHovering {
                 Button {
                     deleteStatus(st)
@@ -1537,11 +1543,17 @@ struct QuickRenameBatchPopover: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(.white, Color.red.opacity(0.9))
-                        .background(Circle().fill(Color.appleCanvas))
-                        .offset(x: 4, y: -4)
+                        .background(
+                            Circle()
+                                .fill(Color.appleCanvas)
+                                .frame(width: 18, height: 18)
+                        )
                 }
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+                .offset(x: 6, y: -6)
                 .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale))
+                .transition(.opacity)
                 .help("删除「\(st)」")
             }
         }
