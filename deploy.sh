@@ -2,13 +2,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="QuickActions"
+APP_NAME="MonoHui-Kit"          # .app 名称
+EXEC_NAME="MonoHuiKit"         # 可执行文件名
 APP_BUNDLE="$ROOT/Build/$APP_NAME.app"
 INSTALL_DIR="/Applications/$APP_NAME.app"
 VERSION_FILE="$ROOT/version.txt"
 CHANGELOG_FILE="$ROOT/CHANGELOG.md"
 
-echo "🚀 QuickActions 一键部署（编译 + 覆盖安装 + 注册服务菜单）"
+echo "🚀 MonoHui-Kit 一键部署（编译 + 覆盖安装 + 注册服务菜单）"
 echo "═══════════════════════════════════════════════════════════"
 
 # 0. 检查本地签名证书（避免更新后 TCC 权限失效）
@@ -57,6 +58,7 @@ VERSION_OVERRIDE="$NEW_VERSION" bash "$ROOT/build.sh"
 # 2. 退出正在运行的旧版（如果在跑）
 echo ""
 echo "2️⃣  退出旧版进程..."
+pkill -f "/Applications/MonoHui-Kit.app" 2>/dev/null || true
 pkill -f "/Applications/QuickActions.app" 2>/dev/null || true
 sleep 1
 
@@ -82,7 +84,7 @@ LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchS
 # 5. 安装服务菜单（会自动清理旧 workflow + 子目录）
 echo ""
 echo "5️⃣  安装服务菜单..."
-"$INSTALL_DIR/Contents/MacOS/$APP_NAME" --install 2>&1 || true
+"$INSTALL_DIR/Contents/MacOS/$EXEC_NAME" --install 2>&1 || true
 
 # 6. 刷新服务缓存
 echo ""
@@ -171,6 +173,6 @@ fi
 
 # 8. 自动打开 app
 echo ""
-echo "8️⃣  启动 QuickActions..."
+echo "8️⃣  启动 MonoHui-Kit..."
 open "$INSTALL_DIR"
 echo "   ✅ 已启动"

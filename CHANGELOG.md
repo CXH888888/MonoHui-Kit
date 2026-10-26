@@ -1,15 +1,29 @@
 # 更新日志
 
-本文件记录 QuickActions 每个版本的变更。
+本文件记录 MonoHui-Kit 每个版本的变更。
 
 ## [未发布]
+
+（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
+
+---
+
+## [v3.4.3] - 2026-10-26
+
+### 变更
+- 全量改名为 **MonoHui-Kit**：bundle id `com.quickactions.app` → `com.monohui.kit`，可执行文件 `MonoHuiKit`，应用包 `MonoHui-Kit.app`，源码目录 `CompressImages` → `MonoHuiKit`，服务 workflow id 改为 `com.monohui.kit.workflow.*`
+- 数据目录迁移：`~/.quickactions` → `~/.monohui-kit`（日志、报告），`~/Library/Caches/QuickActions` → `~/Library/Caches/MonoHui-Kit`（暂存箱）；首次以新 bundle id 启动时自动搬移
+- 配置迁移：自动复制旧域 `com.quickactions.app` 的全部 UserDefaults（快捷键、圆环尺寸、图标字号、压缩参数），已存在的键不覆盖
+- 服务菜单：workflow 脚本里的可执行文件路径改为动态读取，启动时检测到仍指向旧路径会自动重装
+
+---
+
+## [v3.4.1] - 2026-10-26
 
 ### 变更
 - 圆环图标回到环带正中：原来在中心基础上额外外移约 8pt，视觉上偏向外沿
 - 移除「扇区内显示文字」开关与相关渲染，扇区固定只显示图标，动作名统一在中心呈现
 - 底座改为 0.8 不透明度材质 + 左上到右下的斜向渐变光泽，壁纸能透上来；扇区默认完全透明，改用 0.5px 分隔细线区分，选中时才填蓝
-
-（开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
 ---
 
@@ -39,7 +53,7 @@
 - **视频压缩模块**：侧栏新增「视频压缩」，支持 MP4/MOV/M4V/MKV/AVI/WebM 等；可选质量（高质量/平衡/小体积）、分辨率（原分辨率/1080p/720p/480p）与编码（H.264/HEVC）。基于 AVFoundation + VideoToolbox 硬件编码，不额外引入 ffmpeg（安装包体积不变），音频重编码为 48kHz 立体声 AAC 128k 并保留音轨
 - **视频压缩快捷入口**：服务菜单「视频·压缩」与快捷键 ⌥⇧V；快速模式下显示浮动进度面板，完成后通知
 - **批量压缩进度条**：主界面、压缩弹窗、快速压缩浮动面板均显示「已完成/总数 + 当前文件名 + 进度条」，长任务（视频）显示文件内百分比；支持中途取消
-- **失败清单与报告**：批量压缩结束后逐个列出失败文件（文件名 + 原因 + 完整路径），支持复制清单、定位失败文件、另存报告；快速压缩有失败时自动弹出结果窗口并落盘到 `~/.quickactions/reports/`
+- **失败清单与报告**：批量压缩结束后逐个列出失败文件（文件名 + 原因 + 完整路径），支持复制清单、定位失败文件、另存报告；快速压缩有失败时自动弹出结果窗口并落盘到 `~/.monohui-kit/reports/`
 - **「保持原格式」开关**：主界面与压缩弹窗新增开关，开启后按每个文件自身格式压缩；HEIC/TIFF 走系统 sips 重编码（TIFF 用 LZW），不再整批跳过
 - **圆环菜单**：按住快捷键（默认 ⌥⇧R）在光标处淡入圆环，移动鼠标选择扇区、松开修饰键执行，回到中心或 Esc 取消。支持 4 / 6 / 8 扇区与逐扇区动作配置，侧栏新增配置页（实时预览 + 在光标处试一下）
 - **圆环零新增权限**：不使用 `CGEventTap`，改由 Carbon 热键唤出 + 60Hz 轮询 `NSEvent.mouseLocation` / `modifierFlags`，Esc 用 `CGEventSource.keyState` 读键态，因此不要求「输入监控」授权
@@ -506,7 +520,7 @@
 - 文件暂存箱开启后崩溃（`EXC_BREAKPOINT`/`SIGTRAP`）：`HoverTooltipButton` 中新增的 `ButtonViewLocator`（`NSViewRepresentable`）在 `ShelfView` 首次渲染时触发 `NSHostingView.viewDidMoveToWindow` → `updateRequiredBridges` → `PairPreferenceCombiner` 栈溢出。移除 `ButtonViewLocator`，回退为 `NSEvent.mouseLocation` 方案（与 v1.1.8 一致），tooltip 显示在鼠标正下方居中（24×24 锚点）
 
 ### 新增
-- 文件暂存箱设置页「清理」section 新增「查看缓存文件夹」按钮：点击在 Finder 中打开 `~/Library/Caches/QuickActions/Shelf` 目录，方便用户手动删除误关闭后残留的暂存图片。`ShelfStore.cacheDir` 提升为 `static let cacheDirectory` 公共属性，保持单一数据源
+- 文件暂存箱设置页「清理」section 新增「查看缓存文件夹」按钮：点击在 Finder 中打开 `~/Library/Caches/MonoHui-Kit/Shelf` 目录，方便用户手动删除误关闭后残留的暂存图片。`ShelfStore.cacheDir` 提升为 `static let cacheDirectory` 公共属性，保持单一数据源
 - 文件暂存箱最小化（横条）模式：主面板右上角新增「最小化为横条」按钮（仅有文件时启用，图标 `chevron.left.to.line`），点击后主面板滑回屏幕左侧，仅留 10pt 宽横条（高度同面板）。横条顶部显示 `pin.fill` icon，点击可固定显示（取消最小化）。鼠标悬停横条临时滑出（peek），离开主面板与横条后缩回。新增 `ShelfMinimizedPanel` + `ShelfMinimizedBar`，`ShelfPanelController` 新增 `isMinimized`/`isPeeking` 状态机和 `minimize()`/`unminimize()`/`peekExpand()`/`peekCollapse()` 方法。peek 触发由 `NSEvent` 鼠标监听统一判断（避免 SwiftUI `.onHover` 在 panel 切换时抖动），`peekCollapse` 后 0.5s 防抖避免循环。清空文件后若处于最小化模式自动 `unminimize`
 
 ---
@@ -614,13 +628,13 @@
 - 菜单栏集成：状态栏菜单新增「中转站已启用/已禁用」切换项
 
 ### 修复
-- `scripts/build-dmg.sh` 旧 dmg 挂载残留时打包失败：原脚本固定挂载到 `/Volumes/QuickActions`，与已挂载卷冲突时报「资源忙」。改为让 `hdiutil attach` 自动分配挂载点名（如 `/Volumes/QuickActions 2`），并用 `grep -oE` 正确解析带空格的挂载点和 device，卸载时用 device 强制 eject
+- `scripts/build-dmg.sh` 旧 dmg 挂载残留时打包失败：原脚本固定挂载到 `/Volumes/MonoHui-Kit`，与已挂载卷冲突时报「资源忙」。改为让 `hdiutil attach` 自动分配挂载点名（如 `/Volumes/MonoHui-Kit 2`），并用 `grep -oE` 正确解析带空格的挂载点和 device，卸载时用 device 强制 eject
 
 ### 变更
 - `ContentView` 新增 `.shelf` case；`SidebarView` 功能区新增「中转站」导航项（`tray` icon）
 - `AppState.applicationDidFinishLaunching` 非服务菜单启动时按 `shelf_enabled` 恢复面板；新增 `applicationWillTerminate` 退出时按 `shelf_cleanup_on_exit` 清理临时文件
 - `ModuleRegistry.allActions` 追加 `ShelfModule.serviceActions`（Phase 1-5 暂无服务菜单入口）
-- `scripts/build-dmg.sh` 增加标准拖拽安装布局：用 `osascript` 控制 Finder 设置 icon view、96px 图标大小，`QuickActions.app` 在左侧 (120,160)、`Applications` 软链接在右侧 (400,160)，窗口 660×400。打包前先清理残留的 QuickActions 挂载点避免 AppleScript 找错卷
+- `scripts/build-dmg.sh` 增加标准拖拽安装布局：用 `osascript` 控制 Finder 设置 icon view、96px 图标大小，`MonoHui-Kit.app` 在左侧 (120,160)、`Applications` 软链接在右侧 (400,160)，窗口 660×400。打包前先清理残留的 MonoHui-Kit 挂载点避免 AppleScript 找错卷
 
 ---
 
@@ -843,7 +857,7 @@
 ## [v0.3.3] - 2026-07-14
 
 ### 新增
-- 运行日志持久化：`AppLog` 现在把日志写入 `~/.quickactions/logs/app.log`，App 重启后可在设置页查看之前的日志。文件超过 1MB 自动滚动重写（保留后半部分）。诊断日志面板清空时会同时清空文件
+- 运行日志持久化：`AppLog` 现在把日志写入 `~/.monohui-kit/logs/app.log`，App 重启后可在设置页查看之前的日志。文件超过 1MB 自动滚动重写（保留后半部分）。诊断日志面板清空时会同时清空文件
 - 弹窗关闭按钮：压缩弹窗、新建文件夹弹窗右上角新增 × 关闭按钮，无需操作直接关闭弹窗
 
 ### 修复
@@ -954,7 +968,7 @@
 ## [v0.1.0] - 2026-07-10
 
 ### 新增
-- App 改名为 QuickActions（快捷右键工具箱），从 CompressImages 升级为多模块工具箱
+- App 改名为 MonoHui-Kit（快捷右键工具箱），从 MonoHuiKit 升级为多模块工具箱
 - 新增「日期文件夹」模块：右键文件 → 服务 → 文件夹·新建-年月/月日/年月日
   - 在选中项的同级目录创建以日期命名的文件夹
   - 创建后自动选中并进入重命名模式（需辅助功能权限，未授权时降级为仅选中）
@@ -972,10 +986,10 @@
   - `cc快速压缩图片` → `图片·快速压缩`
   - `cc压缩图片为…` → `图片·压缩为…`
 - 设置页职责调整：只保留权限 + 服务菜单安装/移除 + 关于；功能特定设置（压缩档位/格式、日期前缀后缀）放到对应功能页
-- Bundle Identifier 从 `com.compressimages.app` 改为 `com.quickactions.app`
-- workflow 前缀从 `cc` 改为 `com.quickactions.workflow.*`
+- Bundle Identifier 从 `com.compressimages.app` 改为 `com.monohui.kit.app`
+- workflow 前缀从 `cc` 改为 `com.monohui.kit.workflow.*`
 
 ### 移除
 - 删除旧的 `PreferencesView.swift`（被 `SettingsView.swift` 取代）
 - 删除空的 `QuickCompressView.swift`
-- 删除旧的 `CompressImagesApp.swift`（被 `QuickActionsApp.swift` 取代）
+- 删除旧的 `MonoHuiKitApp.swift`（被 `MonoHuiKitApp.swift` 取代）

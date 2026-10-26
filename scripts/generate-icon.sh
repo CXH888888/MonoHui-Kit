@@ -3,7 +3,7 @@ set -euo pipefail
 
 SRC_PNG="$(cd "$(dirname "$0")/.." && pwd)/555-iOS-Default-1024x1024@1x.png"
 ICON_DIR="$(cd "$(dirname "$0")/.." && pwd)/Build/icon.iconset"
-OUTPUT_DIR="$(cd "$(dirname "$0")/../CompressImages" && pwd)/Sources/App/Resources"
+OUTPUT_DIR="$(cd "$(dirname "$0")/../MonoHuiKit" && pwd)/Sources/App/Resources"
 
 mkdir -p "$ICON_DIR" "$OUTPUT_DIR"
 

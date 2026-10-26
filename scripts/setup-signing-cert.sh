@@ -1,6 +1,6 @@
 #!/bin/bash
 # 创建本地代码签名证书（全自动，无需手动操作）
-# 用于 QuickActions 代码签名，更新后 TCC 权限不失效
+# 用于 MonoHui-Kit 代码签名，更新后 TCC 权限不失效
 # 只需运行一次
 
 set -euo pipefail
@@ -9,7 +9,7 @@ CERT_NAME="QuickActions Local Signing"
 KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 TMP_DIR="/tmp/quickactions-cert"
 
-echo "🔑 QuickActions 本地签名证书自动创建"
+echo "🔑 MonoHui-Kit 本地签名证书自动创建"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 

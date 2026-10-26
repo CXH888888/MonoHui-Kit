@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-TOOLS_DIR="$(cd "$(dirname "$0")/../CompressImages/Sources/App/Resources/tools" && pwd)"
+TOOLS_DIR="$(cd "$(dirname "$0")/../MonoHuiKit/Sources/App/Resources/tools" && pwd)"
 TMPDIR="/tmp/compressimages-dl"
 mkdir -p "$TOOLS_DIR" "$TMPDIR"
 

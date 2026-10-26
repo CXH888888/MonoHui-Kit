@@ -1,4 +1,4 @@
-# QuickActions
+# MonoHui-Kit
 
 macOS 快捷右键工具箱。通过 Finder 服务菜单和全局快捷键提供图片压缩、日期文件夹创建等快速操作。支持常驻菜单栏、开机自启动、诊断日志。
 
@@ -27,7 +27,7 @@ bash scripts/setup-signing-cert.sh
 bash build.sh
 ```
 
-产物在 `Build/QuickActions.app`。
+产物在 `Build/MonoHui-Kit.app`。
 
 ### 版本与 CHANGELOG 约定
 
@@ -52,7 +52,7 @@ bash build.sh
 - **快速压缩参数独立于主界面**：存在 UserDefaults 的 `quickQuality` / `quickFormat` / `quickKeepOriginal`，主界面参数改动不影响快速压缩
 - **保持原格式**：主界面与压缩弹窗均可开启，按每个文件自身格式压缩；HEIC/TIFF 由系统 sips 重编码（TIFF 用 LZW）
 - **进度与取消**：批量压缩显示「已完成/总数 + 当前文件名 + 进度条」，可中途取消；快速压缩用屏幕底部浮动面板展示
-- **失败可追溯**：失败文件逐个记录原因，通知正文列出前 3 个失败文件名；结果窗口可查看全部、复制清单、定位文件，报告落盘到 `~/.quickactions/reports/`
+- **失败可追溯**：失败文件逐个记录原因，通知正文列出前 3 个失败文件名；结果窗口可查看全部、复制清单、定位文件，报告落盘到 `~/.monohui-kit/reports/`
 - 压缩弹窗成功后 0.6s 自动关闭；有失败时保留窗口供查看
 - 压缩弹窗支持回车触发主按钮
 
@@ -90,7 +90,7 @@ bash build.sh
 - 动作作用于唤出圆环时 Finder 中选中的文件；选中项异步读取，不阻塞圆环出现
 - **全局热键**：切到其他 App 时只注销依赖 Finder 选中项的热键，圆环热键保留
 - 贴边保护：面板会向内夹取，光标移动不足 8pt 时不选中任何扇区，避免误触
-- 调试：`QuickActions --module radial --mode preview` 在光标处展示圆环 3 秒
+- 调试：`MonoHui-Kit --module radial --mode preview` 在光标处展示圆环 3 秒
 
 ### 日期文件夹
 
@@ -153,7 +153,7 @@ bash build.sh
 `AppLog` 提供应用内日志，用于排查快捷键和服务菜单问题：
 
 - **内存**：最近 100 条，设置页实时显示（倒序）
-- **文件**：`~/.quickactions/logs/app.log`，最大 3MB，超限自动滚动（保留后半部分）
+- **文件**：`~/.monohui-kit/logs/app.log`，最大 3MB，超限自动滚动（保留后半部分）
 - **启动载入**：App 重启后日志不丢失，从文件载入历史
 - **日志级别**：ℹ️ info / ✅ success / ⚠️ warn / ❌ error / 🔥 hot
 - **分类**：App / HotKey / Dispatcher / Service / Finder 等
@@ -166,7 +166,7 @@ bash build.sh
 
 ```
 Sources/App/
-├── QuickActionsApp.swift     — @main 入口，WindowGroup 1000x800
+├── MonoHuiKitApp.swift     — @main 入口，WindowGroup 1000x800
 ├── AppState.swift            — @Observable 全局状态 + AppDelegate
 ├── ContentView.swift         — 根据 module 切换主界面/弹窗
 ├── Core/

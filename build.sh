@@ -2,9 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-PROJECT="$ROOT/CompressImages"
+PROJECT="$ROOT/MonoHuiKit"
 BUILD_DIR="$ROOT/Build"
-APP_NAME="QuickActions"
+APP_NAME="MonoHui-Kit"          # .app 名称
+EXEC_NAME="MonoHuiKit"         # 可执行文件名
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 
 # ── Version Management ──────────────────────────────────────────
@@ -31,7 +32,7 @@ echo "$BUILD_NUMBER" > "$BUILD_NUMBER_FILE"
 
 echo "📌 版本: $SHORT_VERSION (build $BUILD_NUMBER)"
 
-echo "🚀 QuickActions 构建脚本"
+echo "🚀 MonoHui-Kit 构建脚本"
 echo "═══════════════════════════"
 
 # Step 1: Download tools if missing
@@ -73,9 +74,9 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources/tools"
 
 # Copy binary
-BINARY_PATH="$(swift build -c release --disable-sandbox --show-bin-path 2>/dev/null)/$APP_NAME"
+BINARY_PATH="$(swift build -c release --disable-sandbox --show-bin-path 2>/dev/null)/$EXEC_NAME"
 if [ ! -f "$BINARY_PATH" ]; then
-  BINARY_PATH=".build/release/$APP_NAME"
+  BINARY_PATH=".build/release/$EXEC_NAME"
 fi
 
 if [ ! -f "$BINARY_PATH" ]; then
@@ -83,7 +84,7 @@ if [ ! -f "$BINARY_PATH" ]; then
   exit 1
 fi
 
-cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$EXEC_NAME"
 
 # Copy tools (skip lib/ subdirectory, handle separately)
 find "$TOOLS_DIR" -maxdepth 1 -type f -exec cp {} "$APP_BUNDLE/Contents/Resources/tools/" \; 2>/dev/null || true
@@ -120,13 +121,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>$APP_NAME</string>
+    <string>$EXEC_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.quickactions.app</string>
+    <string>com.monohui.kit</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>QuickActions</string>
+    <string>MonoHui-Kit</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

@@ -15,7 +15,7 @@
 #    DYLD_LIBRARY_PATH=(bundle)/lib 兜底解析（同 basename 都在 lib/ 里）。
 #
 # 用法:  bash scripts/package-imagemagick.sh [目标父目录]
-#   无参：打进 CompressImages/Sources/App/Resources/tools/imagemagick
+#   无参：打进 MonoHuiKit/Sources/App/Resources/tools/imagemagick
 #   传参：打进 <参数>/imagemagick（供测试）
 set -u
 
@@ -25,7 +25,7 @@ IMBIN="/opt/homebrew/bin/magick"
 NEED_CODERS="png jpeg tiff psd gif webp bmp svg"
 
 [ $# -ge 1 ] && ROOT="$1"/imagemagick || \
-  ROOT="$(cd "$(dirname "$0")/../CompressImages/Sources/App/Resources/tools" && pwd)"/imagemagick
+  ROOT="$(cd "$(dirname "$0")/../MonoHuiKit/Sources/App/Resources/tools" && pwd)"/imagemagick
 BIN="$ROOT/bin"; LIB="$ROOT/lib"
 MAGICKCORE="libMagickCore-7.Q16HDRI.10.dylib"
 MAGICKWAND="libMagickWand-7.Q16HDRI.10.dylib"

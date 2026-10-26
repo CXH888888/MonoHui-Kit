@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP_BUNDLE="$ROOT/Build/QuickActions.app"
+APP_BUNDLE="$ROOT/Build/MonoHui-Kit.app"
 
-echo "🚀 QuickActions 一键安装"
+echo "🚀 MonoHui-Kit 一键安装"
 echo "═══════════════════════════"
 
 # Step 1: Build
@@ -15,21 +15,21 @@ bash "$ROOT/build.sh"
 # Step 2: Copy to Applications
 echo ""
 echo "📋 安装到 /Applications..."
-if [ -d "/Applications/QuickActions.app" ]; then
-  rm -rf "/Applications/QuickActions.app"
+if [ -d "/Applications/MonoHui-Kit.app" ]; then
+  rm -rf "/Applications/MonoHui-Kit.app"
 fi
-cp -R "$APP_BUNDLE" "/Applications/QuickActions.app"
+cp -R "$APP_BUNDLE" "/Applications/MonoHui-Kit.app"
 
 # Step 3: Register the app with Launch Services for "Open With" support.
 echo ""
 echo "🔗 注册 App..."
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-"$LSREGISTER" -f "/Applications/QuickActions.app" 2>/dev/null || true
+"$LSREGISTER" -f "/Applications/MonoHui-Kit.app" 2>/dev/null || true
 
 echo ""
 echo "✅ 安装完成!"
 echo ""
-echo "打开 App: 在 Finder 中打开 /Applications，双击 QuickActions"
+echo "打开 App: 在 Finder 中打开 /Applications，双击 MonoHui-Kit"
 echo "管理服务菜单: 打开 App → 左下角设置 → 安装/移除各服务项"
 echo ""
 echo "使用方法:"

@@ -1,14 +1,14 @@
 #!/bin/bash
-# 打包 QuickActions.app 为 dmg 安装包（标准拖拽安装布局：app 在左、Applications 在右）
+# 打包 MonoHui-Kit.app 为 dmg 安装包（标准拖拽安装布局：app 在左、Applications 在右）
 # 用法：bash scripts/build-dmg.sh
-# 产物：dist/QuickActions-v{version}.dmg
+# 产物：dist/MonoHui-Kit-v{version}.dmg
 
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-VOLNAME="QuickActions"
+VOLNAME="MonoHui-Kit"
 
 # 读取版本号
 VERSION=$(cat version.txt | tr -d '[:space:]')
@@ -17,7 +17,7 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-APP_PATH="Build/QuickActions.app"
+APP_PATH="Build/MonoHui-Kit.app"
 if [ ! -d "$APP_PATH" ]; then
     echo "❌ 找不到 $APP_PATH，请先运行 bash deploy.sh 编译"
     exit 1
@@ -27,14 +27,14 @@ fi
 DIST_DIR="dist"
 mkdir -p "$DIST_DIR"
 
-DMG_NAME="QuickActions-v${VERSION}.dmg"
+DMG_NAME="MonoHui-Kit-v${VERSION}.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 RW_DMG_PATH="$DIST_DIR/.tmp-rw.dmg"
 
 # 清理旧产物
 rm -f "$DMG_PATH" "$RW_DMG_PATH"
 
-# 清理可能残留的旧 QuickActions 挂载点（避免后续 AppleScript 找错卷）
+# 清理可能残留的旧 MonoHui-Kit 挂载点（避免后续 AppleScript 找错卷）
 echo "🧹 清理残留挂载..."
 for dev in $(hdiutil info | grep -B3 "/Volumes/$VOLNAME" | grep -oE '^/dev/disk[0-9]+' | sort -u); do
     hdiutil detach "$dev" -force >/dev/null 2>&1 || true
@@ -50,7 +50,7 @@ hdiutil create \
     -format UDRW \
     "$RW_DMG_PATH" >/dev/null
 
-# 步骤 2：挂载可读写 dmg（此时已清理残留，固定挂载到 /Volumes/QuickActions）
+# 步骤 2：挂载可读写 dmg（此时已清理残留，固定挂载到 /Volumes/MonoHui-Kit）
 ATTACH_OUT=$(hdiutil attach -nobrowse -noautoopen "$RW_DMG_PATH")
 MOUNT_DIR=$(echo "$ATTACH_OUT" | grep -oE '/Volumes/.*$' | head -1 | sed 's/[[:space:]]*$//')
 DEV=$(echo "$ATTACH_OUT" | grep -oE '^/dev/disk[0-9]+' | head -1)
@@ -82,7 +82,7 @@ tell application "Finder"
     set bounds of theWindow to {200, 200, 860, 600}
     set icon size of the icon view options of theWindow to 96
     set arrangement of the icon view options of theWindow to not arranged
-    set position of item "QuickActions.app" of theDisk to {120, 160}
+    set position of item "MonoHui-Kit.app" of theDisk to {120, 160}
     set position of item "Applications" of theDisk to {400, 160}
     close theWindow
 end tell
@@ -101,6 +101,6 @@ echo "   📁 $DMG_PATH"
 echo ""
 echo "📋 分发说明："
 echo "   - 拷贝到其他 Mac 后双击挂载"
-echo "   - 把左侧 QuickActions.app 拖到右侧 Applications 文件夹即完成安装"
+echo "   - 把左侧 MonoHui-Kit.app 拖到右侧 Applications 文件夹即完成安装"
 echo "   - 首次启动需在「系统设置 → 隐私与安全性」点「仍要打开」放行 Gatekeeper"
 echo "   - 打开后到「设置 → 服务菜单」点「全部安装」注册右键菜单"

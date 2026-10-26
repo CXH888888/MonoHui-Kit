@@ -1,8 +1,8 @@
 # Build artifacts
 Build/
-CompressImages/.build/
-CompressImages/Sources/App/Resources/tools/
-CompressImages/Sources/App/Resources/lib/
+MonoHuiKit/.build/
+MonoHuiKit/Sources/App/Resources/tools/
+MonoHuiKit/Sources/App/Resources/lib/
 
 # Trae / IDE
 .trae/
