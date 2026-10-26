@@ -15,6 +15,7 @@ final class RadialMenuController {
 
     private var panel: NSPanel?
     private let model = RadialMenuModel()
+    private var metrics = RadialMenuMetrics.current()
     private var timer: Timer?
     private var urls: [URL] = []
     private var triggerModifiers: NSEvent.ModifierFlags = []
@@ -36,6 +37,7 @@ final class RadialMenuController {
         guard !isOpen else { return }
 
         sessionID = UUID()
+        metrics = RadialMenuMetrics.current()
         model.actions = RadialMenuSettings.shared.activeActions
         model.selection = nil
         urls = []
@@ -43,7 +45,7 @@ final class RadialMenuController {
         startedAt = Date()
         initialMouse = NSEvent.mouseLocation
 
-        ensurePanel()
+        ensurePanel(size: metrics.panelSize)
         positionPanel()
         model.isShown = false
         panel?.orderFrontRegardless()
@@ -96,7 +98,8 @@ final class RadialMenuController {
         // 一唤出就会误选中某个扇区。要求光标先移动超过 8pt 才开始选择。
         let moved = hypot(mouse.x - initialMouse.x, mouse.y - initialMouse.y) > 8
         let index = moved
-            ? RadialMenuGeometry.index(for: mouse, center: center, count: model.actions.count)
+            ? RadialMenuGeometry.index(for: mouse, center: center,
+                                       count: model.actions.count, metrics: metrics)
             : nil
 
         if index != model.selection {
@@ -195,10 +198,14 @@ final class RadialMenuController {
 
     // MARK: - 窗口
 
-    private func ensurePanel() {
-        guard panel == nil else { return }
-        let size = RadialMenuGeometry.panelSize
-        let hosting = NSHostingView(rootView: RadialMenuView(model: model))
+    private func ensurePanel(size: CGFloat) {
+        // 尺寸档位变化时重建面板；未变化则复用，保证第二次唤出没有构建延迟
+        if let panel, panel.frame.width == size { return }
+        panel?.orderOut(nil)
+        panel?.close()
+        panel = nil
+
+        let hosting = NSHostingView(rootView: RadialMenuView(model: model, metrics: metrics))
         hosting.frame = NSRect(x: 0, y: 0, width: size, height: size)
 
         let panel = NSPanel(
@@ -221,7 +228,7 @@ final class RadialMenuController {
 
     private func positionPanel() {
         guard let panel else { return }
-        let size = RadialMenuGeometry.panelSize
+        let size = metrics.panelSize
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
 

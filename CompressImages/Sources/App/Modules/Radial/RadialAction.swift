@@ -53,10 +53,13 @@ final class RadialMenuSettings {
     static let shared = RadialMenuSettings()
 
     static let allowedCounts = [4, 6, 8]
+    /// 面板边长（pt）：小 / 中 / 大
+    static let allowedSizes = [280, 320, 360]
     private static let enabledKey = "radial_enabled"
     private static let countKey = "radial_sector_count"
     private static let actionsKey = "radial_action_ids"
     private static let labelsKey = "radial_show_labels"
+    private static let sizeKey = "radial_menu_size"
 
     var enabled: Bool {
         didSet { UserDefaults.standard.set(enabled, forKey: Self.enabledKey) }
@@ -80,13 +83,23 @@ final class RadialMenuSettings {
         didSet { UserDefaults.standard.set(showLabels, forKey: Self.labelsKey) }
     }
 
+    /// 圆环尺寸（面板边长）。改完下次唤出即生效。
+    var menuSize: Int {
+        didSet {
+            let clamped = Self.allowedSizes.contains(menuSize) ? menuSize : 320
+            if clamped != menuSize { menuSize = clamped; return }
+            UserDefaults.standard.set(menuSize, forKey: Self.sizeKey)
+        }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
             Self.enabledKey: true,
             Self.countKey: 8,
             Self.actionsKey: RadialActionCatalog.defaultActionIds,
-            Self.labelsKey: true
+            Self.labelsKey: false,
+            Self.sizeKey: 320
         ])
         enabled = defaults.bool(forKey: Self.enabledKey)
         let count = defaults.integer(forKey: Self.countKey)
@@ -94,6 +107,8 @@ final class RadialMenuSettings {
         let ids = defaults.stringArray(forKey: Self.actionsKey) ?? []
         actionIds = Self.normalized(ids)
         showLabels = defaults.bool(forKey: Self.labelsKey)
+        let size = defaults.integer(forKey: Self.sizeKey)
+        menuSize = Self.allowedSizes.contains(size) ? size : 320
     }
 
     /// 补齐/裁剪到 8 个槽位，保证索引永远可用

@@ -18,9 +18,9 @@ final class RadialMenuModel {
 struct RadialSectorShape: Shape {
     let index: Int
     let count: Int
-    var inner: CGFloat = RadialMenuGeometry.innerRadius
-    var outer: CGFloat = RadialMenuGeometry.outerRadius
-    var gapDegrees: Double = 2.4
+    let inner: CGFloat
+    let outer: CGFloat
+    var gapDegrees: Double = 1.4
 
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
@@ -38,11 +38,18 @@ struct RadialSectorShape: Shape {
     }
 }
 
+/// 圆环菜单视图。
+///
+/// 排版参考 Loop / Pieoneer：**扇区只放图标，文字集中在中心**。
+/// 这样 8 个扇区也不会出现文字挤压，环本身可以做得更小更薄。
 struct RadialMenuView: View {
     let model: RadialMenuModel
+    let metrics: RadialMenuMetrics
     var isPreview: Bool = false
 
-    private let size = RadialMenuGeometry.panelSize
+    private var size: CGFloat { metrics.panelSize }
+    private var iconRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 + size * 0.022 }
+    private var labelRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 - size * 0.062 }
 
     var body: some View {
         ZStack {
@@ -50,37 +57,49 @@ struct RadialMenuView: View {
             center
         }
         .frame(width: size, height: size)
-        .scaleEffect(model.isShown ? 1 : 0.74)
+        .scaleEffect(model.isShown ? 1 : 0.8)
         .opacity(model.isShown ? 1 : 0)
-        .rotationEffect(.degrees(model.isShown ? 0 : -7))
-        .scaleEffect(model.selection == nil ? 1 : 0.965)
-        .animation(isPreview ? nil : .spring(response: 0.34, dampingFraction: 0.74), value: model.isShown)
-        .animation(.easeOut(duration: 0.14), value: model.selection)
+        .rotationEffect(.degrees(model.isShown ? 0 : -5))
+        .scaleEffect(model.selection == nil ? 1 : 0.982)
+        .animation(isPreview ? nil : .spring(response: 0.32, dampingFraction: 0.76), value: model.isShown)
+        .animation(.easeOut(duration: 0.13), value: model.selection)
     }
 
     private var ring: some View {
         ZStack {
+            // 底衬：让扇区缝隙之间不是全透明，轮廓更完整
+            Circle()
+                .strokeBorder(Color.white.opacity(0.05),
+                              lineWidth: metrics.outerRadius - metrics.innerRadius)
+                .frame(width: metrics.outerRadius * 2,
+                       height: metrics.outerRadius * 2)
+
             ForEach(Array(model.actions.enumerated()), id: \.element.id) { index, action in
                 let isSelected = model.selection == index
-                let shape = RadialSectorShape(index: index, count: model.actions.count)
+                let shape = RadialSectorShape(index: index, count: model.actions.count,
+                                              inner: metrics.innerRadius, outer: metrics.outerRadius)
 
                 shape
                     .fill(isSelected
                           ? AnyShapeStyle(Color.appleBlue)
                           : AnyShapeStyle(.ultraThinMaterial))
-                    .overlay(
-                        shape.stroke(
-                            isSelected ? Color.white.opacity(0.35) : Color.white.opacity(0.14),
-                            lineWidth: 0.5
-                        )
-                    )
-                    .opacity(model.selection == nil || isSelected ? 1 : 0.55)
+                    .opacity(model.selection == nil || isSelected ? 1 : 0.5)
                     .animation(.easeOut(duration: 0.12), value: model.selection)
 
                 sectorContent(index: index, action: action, isSelected: isSelected)
             }
+
+            // 内外两道极细描边，统一环的轮廓
+            Circle()
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                .frame(width: metrics.outerRadius * 2,
+                       height: metrics.outerRadius * 2)
+            Circle()
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
+                .frame(width: metrics.innerRadius * 2,
+                       height: metrics.innerRadius * 2)
         }
-        .shadow(color: .black.opacity(0.28), radius: 26, y: 10)
+        .shadow(color: .black.opacity(0.22), radius: 18, y: 7)
     }
 
     @ViewBuilder
@@ -88,33 +107,26 @@ struct RadialMenuView: View {
         let step = 360.0 / Double(max(1, model.actions.count))
         let midDegrees = -90 + (Double(index) + 0.5) * step
         let mid: Double = midDegrees * .pi / 180
-        // 先算成 CGFloat，避免 cos/sin 在 Double 与 CGFloat 重载之间歧义
         let midCos = CGFloat(cos(mid))
         let midSin = CGFloat(sin(mid))
-        let iconRadius = (RadialMenuGeometry.innerRadius + RadialMenuGeometry.outerRadius) / 2 + 26
-        let labelRadius = (RadialMenuGeometry.innerRadius + RadialMenuGeometry.outerRadius) / 2 - 26
-        // 显式标注 Font 类型：三元表达式直接写在 .font(.system(...)) 里会让
-        // Text.font 与 View.font 两个重载无法消歧
-        let labelFont: Font = isSelected
-            ? .system(size: 12, weight: .semibold)
-            : .system(size: 12, weight: .regular)
-        // 显式标注 Text：否则 Text.font 与 View.font 两个重载在 ViewBuilder 里无法消歧
-        let labelText: Text = Text(action.displayName).font(labelFont)
 
         ZStack {
             Image(systemName: action.icon)
-                .font(.system(size: 19, weight: .regular))
-                .foregroundStyle(isSelected ? Color.white : Color.appleInk)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isSelected ? Color.white : Color.appleSoft)
+                .scaleEffect(isSelected ? 1.12 : 1)
                 .position(
                     x: size / 2 + midCos * iconRadius,
                     y: size / 2 + midSin * iconRadius
                 )
 
             if RadialMenuSettings.shared.showLabels {
-                labelText
-                    .foregroundStyle(isSelected ? Color.white : Color.appleInk)
+                Text(action.displayName)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.appleSoft.opacity(0.85))
                     .lineLimit(1)
-                    .fixedSize()
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 58)
                     .position(
                         x: size / 2 + midCos * labelRadius,
                         y: size / 2 + midSin * labelRadius
@@ -129,27 +141,28 @@ struct RadialMenuView: View {
                 .fill(.ultraThinMaterial)
                 .overlay(
                     Circle().stroke(
-                        model.selection == nil ? Color.white.opacity(0.16) : Color.appleBlue.opacity(0.55),
-                        lineWidth: 1
+                        model.selection == nil ? Color.white.opacity(0.18) : Color.appleBlue.opacity(0.5),
+                        lineWidth: 0.5
                     )
                 )
-                .frame(width: RadialMenuGeometry.innerRadius * 2 - 18,
-                       height: RadialMenuGeometry.innerRadius * 2 - 18)
-                .shadow(color: .black.opacity(0.16), radius: 14, y: 4)
+                .frame(width: metrics.innerRadius * 2 - size * 0.05,
+                       height: metrics.innerRadius * 2 - size * 0.05)
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
 
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Text(model.selectedAction?.displayName ?? (isPreview ? "圆环预览" : "移动选择"))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.appleInk)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
                 Text(model.selectedAction?.hint ?? (isPreview ? "\(model.actions.count) 个扇区" : "回到中心取消"))
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
                     .lineLimit(1)
-                    .padding(.horizontal, 8)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(width: RadialMenuGeometry.innerRadius * 2 - 40)
+            .frame(width: metrics.innerRadius * 2 - size * 0.106)
             .multilineTextAlignment(.center)
         }
     }

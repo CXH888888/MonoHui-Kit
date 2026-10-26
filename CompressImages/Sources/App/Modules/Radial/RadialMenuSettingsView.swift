@@ -107,29 +107,75 @@ struct RadialMenuSettingsView: View {
         }
     }
 
-    // MARK: - 扇区数量
+    // MARK: - 外观
 
     private var sectorSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("扇区数量")
-            HStack(spacing: 10) {
-                ForEach(RadialMenuSettings.allowedCounts, id: \.self) { count in
-                    PillButton(
-                        label: "\(count) 个",
-                        isSelected: settings.sectorCount == count,
-                        action: { settings.sectorCount = count }
-                    )
+            SectionHeader("外观")
+
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Text("扇区数量")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleInk)
+                        .frame(width: 64, alignment: .leading)
+                    ForEach(RadialMenuSettings.allowedCounts, id: \.self) { count in
+                        PillButton(
+                            label: "\(count) 个",
+                            isSelected: settings.sectorCount == count,
+                            action: { settings.sectorCount = count }
+                        )
+                    }
+                    Spacer()
                 }
-                Spacer()
-                Toggle("显示文字标签", isOn: $settings.showLabels)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .font(.system(size: 12))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                SectionDivider()
+
+                HStack(spacing: 10) {
+                    Text("圆环尺寸")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleInk)
+                        .frame(width: 64, alignment: .leading)
+                    ForEach(RadialMenuSettings.allowedSizes, id: \.self) { size in
+                        PillButton(
+                            label: sizeLabel(size),
+                            isSelected: settings.menuSize == size,
+                            action: { settings.menuSize = size }
+                        )
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                SectionDivider()
+
+                HStack {
+                    Text("扇区内显示文字")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleInk)
+                    Spacer()
+                    Toggle("", isOn: $settings.showLabels)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .padding(16)
             .background(Color.appleSurface)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appleDivider, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private func sizeLabel(_ size: Int) -> String {
+        switch size {
+        case 280: return "小"
+        case 360: return "大"
+        default:  return "中"
         }
     }
 
@@ -229,9 +275,13 @@ struct RadialMenuSettingsView: View {
             }
             HStack {
                 Spacer()
-                RadialMenuView(model: previewModel, isPreview: true)
-                    .scaleEffect(0.62)
-                    .frame(width: 290, height: 290)
+                RadialMenuView(
+                    model: previewModel,
+                    metrics: RadialMenuMetrics(panelSize: CGFloat(settings.menuSize)),
+                    isPreview: true
+                )
+                .scaleEffect(290 / CGFloat(settings.menuSize))
+                .frame(width: 290, height: 290)
                 Spacer()
             }
             .padding(.vertical, 4)
