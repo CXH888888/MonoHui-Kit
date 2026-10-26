@@ -25,6 +25,8 @@ struct RadialMenuSettingsView: View {
         .onChange(of: settings.sectorCount) { _, _ in syncPreview() }
         .onChange(of: settings.actionIds) { _, _ in syncPreview() }
         .onChange(of: settings.showLabels) { _, _ in syncPreview() }
+        .onChange(of: settings.iconSize) { _, _ in syncPreview() }
+        .onChange(of: settings.textSize) { _, _ in syncPreview() }
         .onChange(of: settings.enabled) { _, _ in
             // 关闭时立即释放快捷键，开启时立即注册
             HotKeyManager.shared.refreshForFrontmostApp()
@@ -361,5 +363,8 @@ struct RadialMenuSettingsView: View {
         previewModel.actions = settings.activeActions
         previewModel.selection = nil
         previewModel.isShown = true
+        previewModel.showLabels = settings.showLabels
+        previewModel.iconSize = CGFloat(settings.iconSize)
+        previewModel.titleSize = CGFloat(settings.textSize)
     }
 }

@@ -122,7 +122,7 @@ final class RadialMenuSettings {
             Self.enabledKey: true,
             Self.countKey: 8,
             Self.actionsKey: RadialActionCatalog.defaultActionIds,
-            Self.labelsKey: false,
+            Self.labelsKey: true,
             Self.sizeKey: 320,
             Self.iconSizeKey: 14,
             Self.textSizeKey: 12
