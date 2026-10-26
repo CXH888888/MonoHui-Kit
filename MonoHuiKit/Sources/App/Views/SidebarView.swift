@@ -5,18 +5,26 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 左上：功能区（主）— 按钮更大、更重
+            // 最上：圆环菜单 —— 交互层，不属于功能模块，单独置顶
+            navButton(.radial, icon: "circle.dashed", label: "圆环菜单", isPrimary: true)
+                .padding(.horizontal, 12)
+                .padding(.top, 16)
+                .padding(.bottom, 14)
+
+            Divider()
+                .padding(.horizontal, 12)
+
+            // 功能区（主）— 按钮更大、更重
             VStack(alignment: .leading, spacing: 6) {
                 primarySectionHeader("功能")
                 navButton(.compress, icon: "photo", label: "图片压缩", isPrimary: true)
                 navButton(.video, icon: "film", label: "视频压缩", isPrimary: true)
-                navButton(.radial, icon: "circle.dashed", label: "圆环菜单", isPrimary: true)
                 navButton(.format, icon: "arrow.triangle.2.circlepath", label: "格式转化", isPrimary: true)
                 navButton(.datefolder, icon: "folder", label: "文件命名扩展", isPrimary: true)
                 navButton(.shelf, icon: "tray", label: "文件暂存箱", isPrimary: true)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 16)
+            .padding(.top, 14)
             .padding(.bottom, 18)
 
             Spacer()

@@ -8,6 +8,8 @@ struct RadialMenuMetrics {
 
     var innerRadius: CGFloat { (panelSize * 0.194).rounded() }
     var outerRadius: CGFloat { (panelSize * 0.444).rounded() }
+    /// 底座（毛玻璃圆盘）半径：比扇区外沿再外扩 8pt，扇区层与底座的边界更清楚
+    var backdropRadius: CGFloat { outerRadius + 8 }
     /// 中心死区：半径小于此值视为未选择（松手即取消）
     var deadZone: CGFloat { (panelSize * 0.13).rounded() }
     /// 命中判定的外沿，比视觉外圈略大，避免贴边选不中
@@ -19,13 +21,23 @@ struct RadialMenuMetrics {
 }
 
 enum RadialMenuGeometry {
-    /// 从正上方开始顺时针计角（0° = 上，90° = 右）
+    static func step(count: Int) -> Double { 360.0 / Double(max(1, count)) }
+
+    /// 扇区 i 的中线，相对正上方的顺时针角度（0° = 上，90° = 右）。
+    /// 视图与命中判定共用这一处几何：扇区 i 的中线就是 i*step，
+    /// 扇区 0 正对上方。曾经视图以「i*step 为起始边」、判定以「i*step 为中线」，
+    /// 两边错开半格（8 扇区 22.5°），导致光标落在扇区边缘时高亮跳到邻区。
+    static func centerAngle(index: Int, count: Int) -> Double {
+        Double(index) * step(count: count)
+    }
+
+    /// 从正上方顺时针计角（0° = 上，90° = 右）
     static func sectorIndex(clockwiseDegrees degrees: Double, count: Int) -> Int {
         guard count > 0 else { return 0 }
-        let step = 360.0 / Double(count)
         var normalized = degrees.truncatingRemainder(dividingBy: 360)
         if normalized < 0 { normalized += 360 }
-        return Int((normalized + step / 2) / step) % count
+        // 就近取整到最近的中线，边界正好落在两个扇区中间
+        return Int((normalized / step(count: count)).rounded()) % count
     }
 
     /// 屏幕坐标（Cocoa，原点左下、y 向上）下的命中判定。

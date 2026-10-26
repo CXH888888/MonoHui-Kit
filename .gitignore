@@ -4,6 +4,9 @@ MonoHuiKit/.build/
 MonoHuiKit/Sources/App/Resources/tools/
 MonoHuiKit/Sources/App/Resources/lib/
 
+# 发布产物：dmg 走 GitHub Release，不入库
+dist/*.dmg
+
 # Trae / IDE
 .trae/
 .workbuddy/

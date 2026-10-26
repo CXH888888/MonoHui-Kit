@@ -28,9 +28,11 @@ struct RadialSectorShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        let step = 360.0 / Double(max(1, count))
-        let start = -90 + Double(index) * step
-        let end = -90 + Double(index + 1) * step
+        let step = RadialMenuGeometry.step(count: count)
+        // 扇区 i 的中线正对 i*step（SwiftUI 角度即 i*step - 90），起始边各退半格，
+        // 与 RadialMenuGeometry.sectorIndex 的判定范围严格对齐
+        let start = -90 + (Double(index) - 0.5) * step
+        let end = -90 + (Double(index) + 0.5) * step
 
         var path = Path()
         path.addArc(center: center, radius: outer,
@@ -63,54 +65,87 @@ struct RadialMenuView: View {
             center
         }
         .frame(width: size, height: size)
-        .scaleEffect(model.isShown ? 1 : 0.8)
+        // 不再整体缩放/旋转：毛玻璃底座是独立的 AppKit 视图，不跟着 SwiftUI 变换，
+        // 整体缩放会让内容在固定的玻璃盘上滑动。展开动效交给各扇区自己播放。
         .opacity(model.isShown ? 1 : 0)
-        .rotationEffect(.degrees(model.isShown ? 0 : -5))
-        .scaleEffect(model.selection == nil ? 1 : 0.985)
-        .animation(isPreview ? nil : .spring(response: 0.32, dampingFraction: 0.76), value: model.isShown)
+        .scaleEffect(model.isShown ? 1 : 0.96)
+        .animation(isPreview ? nil : (model.isShown
+                                      ? .easeOut(duration: 0.24)
+                                      : .easeIn(duration: 0.18)), value: model.isShown)
         .animation(.easeOut(duration: 0.13), value: model.selection)
     }
 
     // MARK: - 毛玻璃底座
 
-    /// 外圈毛玻璃底座：比扇区外沿向外 4pt、内沿向内 2pt。
-    /// 用 0.8 不透明度的材质 + 斜向渐变光泽，让壁纸透上来，避免看起来像一块实心灰盘。
+    /// 整块底座的装饰层：直径比扇区外沿大 6pt，整圆盘连内部一起铺满，环心不再留空。
+    ///
+    /// 正式面板的背景模糊由 AppKit 的 `NSVisualEffectView` 承担（见 `RadialMenuController`），
+    /// SwiftUI 的 `.ultraThinMaterial` 在透明 + `screenSaver` 层级的 NSPanel 里拿不到
+    /// 窗口背后的采样，只会渲染成半透明灰，所以这里不再叠材质，只补光泽与描边。
+    /// 设置页预览没有那层 AppKit 背景，退回用 SwiftUI 材质兜底。
     private var backdrop: some View {
-        let bandOuter = metrics.outerRadius + 4
-        let bandInner = metrics.innerRadius - 2
-        let diameter = bandOuter * 2
-        let lineWidth = bandOuter - bandInner
+        let diameter = metrics.backdropRadius * 2
 
         return ZStack {
-            Circle()
-                .strokeBorder(.ultraThinMaterial, lineWidth: lineWidth)
-                .frame(width: diameter, height: diameter)
-                .opacity(0.8)
+            if isPreview {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: diameter, height: diameter)
+            }
 
-            // 玻璃光泽：左上偏亮、右下偏暗，形成一层很薄的渐变
+            // 压暗底层：让扇区层（80% 不透明）与底座拉开明度差，边界一眼能看出来
             Circle()
-                .strokeBorder(
+                .fill(Color.black.opacity(0.32))
+                .frame(width: diameter, height: diameter)
+
+            // 玻璃光泽：左上偏亮、右下偏暗，给整块底一点体积
+            Circle()
+                .fill(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.16),
-                            Color.white.opacity(0.02),
-                            Color.black.opacity(0.05)
+                            Color.white.opacity(0.07),
+                            Color.white.opacity(0.01),
+                            Color.black.opacity(0.10)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
-                    ),
-                    lineWidth: lineWidth
+                    )
                 )
                 .frame(width: diameter, height: diameter)
 
             Circle()
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.5)
                 .frame(width: diameter, height: diameter)
         }
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
     }
 
     // MARK: - 扇区
+
+    /// 扇区填充：选中是蓝色渐变，未选中是极淡的玻璃薄片。
+    /// 未选中必须给一点实体填充，否则 `Color.clear` 投不出阴影，薄片就浮不起来。
+    private func sectorFill(isSelected: Bool) -> AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [Color.appleBlueHover, Color.appleBlue],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+        return AnyShapeStyle(Color.white.opacity(0.08))
+    }
+
+    /// 依次展开：从正上方向两侧对称铺开（先上，再右上/左上，再右/左…），最后收在正下方。
+    /// 纯顺时针排队会让末尾停在左上，看起来像绕了一圈没闭合。
+    private func revealAnimation(index: Int) -> Animation {
+        guard model.isShown else { return .easeIn(duration: 0.16) }
+        let count = max(1, model.actions.count)
+        let distance = min(index, count - index)
+        // damping 0.84：比之前少一点回弹，连续弹 8 片时不会显得晃
+        return .spring(response: 0.38, dampingFraction: 0.84)
+            .delay(Double(distance) * 0.024)
+    }
 
     private var ring: some View {
         ZStack {
@@ -120,40 +155,71 @@ struct RadialMenuView: View {
                                               inner: metrics.innerRadius, outer: metrics.outerRadius)
 
                 shape
-                    .fill(isSelected ? AnyShapeStyle(Color.appleBlue) : AnyShapeStyle(Color.clear))
+                    .fill(sectorFill(isSelected: isSelected))
+                    // 扇区是压在毛玻璃上的第二层：80% 不透明，留 20% 透出底下的背景模糊
+                    .opacity(0.8)
+                    // 选中时抬起得更明显；未选中靠极淡的投影把薄片从底座上托起来
+                    .shadow(color: .black.opacity(isSelected ? 0.32 : 0.14),
+                            radius: isSelected ? 8 : 3,
+                            y: isSelected ? 4 : 2)
+                    .scaleEffect(model.isShown ? 1 : 0.88)
+                    .opacity(model.isShown ? 1 : 0)
+                    .animation(revealAnimation(index: index), value: model.isShown)
                     .animation(.easeOut(duration: 0.12), value: model.selection)
 
                 iconContent(index: index, action: action, isSelected: isSelected)
+                    .scaleEffect(model.isShown ? 1 : 0.7)
+                    .opacity(model.isShown ? 1 : 0)
+                    .animation(revealAnimation(index: index), value: model.isShown)
             }
 
             sectorDividers
+                .scaleEffect(model.isShown ? 1 : 0.9)
+                .opacity(model.isShown ? 1 : 0)
+                .animation(ringReveal, value: model.isShown)
 
+            // 环带内外描边：必须和扇区一起缩放淡入。
+            // 之前只有扇区有入场动画，这两圈线一唤出就是全尺寸，看起来像「先画了个框再填内容」。
             Circle()
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.5)
                 .frame(width: metrics.outerRadius * 2,
                        height: metrics.outerRadius * 2)
+                .scaleEffect(model.isShown ? 1 : 0.9)
+                .opacity(model.isShown ? 1 : 0)
+                .animation(ringReveal, value: model.isShown)
+
             Circle()
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                 .frame(width: metrics.innerRadius * 2,
                        height: metrics.innerRadius * 2)
+                .scaleEffect(model.isShown ? 1 : 0.9)
+                .opacity(model.isShown ? 1 : 0)
+                .animation(ringReveal, value: model.isShown)
         }
+    }
+
+    /// 环带描边与分隔线的入场/退场曲线，跟扇区同一节奏但不排队
+    private var ringReveal: Animation {
+        model.isShown ? .easeOut(duration: 0.26) : .easeIn(duration: 0.16)
     }
 
     /// 扇区分隔线：比留缝更精致，环仍然是完整的一圈玻璃
     private var sectorDividers: some View {
-        let count = max(1, model.actions.count)
-        let step = 360.0 / Double(count)
+        let count: Int = max(1, model.actions.count)
+        let step: Double = RadialMenuGeometry.step(count: count)
+        let centerPoint: CGFloat = size / 2
 
         return ZStack {
             ForEach(0..<count, id: \.self) { index in
                 Path { path in
-                    let angle = (-90 + Double(index) * step) * .pi / 180
-                    let dx = CGFloat(cos(angle))
-                    let dy = CGFloat(sin(angle))
-                    path.move(to: CGPoint(x: size / 2 + dx * metrics.innerRadius,
-                                          y: size / 2 + dy * metrics.innerRadius))
-                    path.addLine(to: CGPoint(x: size / 2 + dx * metrics.outerRadius,
-                                             y: size / 2 + dy * metrics.outerRadius))
+                    let boundary: Double = -90.0 + (Double(index) - 0.5) * step
+                    let angle: Double = boundary * Double.pi / 180.0
+                    let dx: CGFloat = CGFloat(cos(angle))
+                    let dy: CGFloat = CGFloat(sin(angle))
+                    path.move(to: CGPoint(x: centerPoint + dx * metrics.innerRadius,
+                                          y: centerPoint + dy * metrics.innerRadius))
+                    path.addLine(to: CGPoint(x: centerPoint + dx * metrics.outerRadius,
+                                             y: centerPoint + dy * metrics.outerRadius))
                 }
                 .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
             }
@@ -162,9 +228,8 @@ struct RadialMenuView: View {
 
     @ViewBuilder
     private func iconContent(index: Int, action: RadialAction, isSelected: Bool) -> some View {
-        let step = 360.0 / Double(max(1, model.actions.count))
-        let midDegrees = -90 + (Double(index) + 0.5) * step
-        let mid: Double = midDegrees * .pi / 180
+        let midDegrees: Double = -90.0 + RadialMenuGeometry.centerAngle(index: index, count: model.actions.count)
+        let mid: Double = midDegrees * Double.pi / 180.0
         let midCos = CGFloat(cos(mid))
         let midSin = CGFloat(sin(mid))
         let idleOpacity: Double = model.selection == nil ? 1 : 0.55
@@ -183,10 +248,13 @@ struct RadialMenuView: View {
     // MARK: - 中心
 
     private var center: some View {
-        ZStack {
+        let title: String = model.selectedAction?.displayName ?? (isPreview ? "圆环预览" : "移动选择")
+        let hint: String = model.selectedAction?.hint ?? (isPreview ? "\(model.actions.count) 个扇区" : "回到中心取消")
+
+        return ZStack {
+            // 底座已经是整块毛玻璃，中心只加一层极淡的提亮，不再重复叠材质
             Circle()
-                .fill(.ultraThinMaterial)
-                .opacity(0.9)
+                .fill(Color.white.opacity(0.055))
                 .overlay(
                     Circle().stroke(
                         model.selection == nil ? Color.white.opacity(0.16) : Color.appleBlue.opacity(0.5),
@@ -195,23 +263,33 @@ struct RadialMenuView: View {
                 )
                 .frame(width: metrics.innerRadius * 2 - size * 0.05,
                        height: metrics.innerRadius * 2 - size * 0.05)
+                // 与扇区同层：80% 不透明，留 20% 透出底下的背景模糊
+                .opacity(0.8)
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 3)
 
             VStack(spacing: 3) {
-                Text(model.selectedAction?.displayName ?? (isPreview ? "圆环预览" : "移动选择"))
+                Text(title)
                     .font(.system(size: model.titleSize, weight: .semibold))
                     .foregroundStyle(Color.appleInk)
+                    // 换字时按内容过渡淡入淡出，而不是硬切
+                    .contentTransition(.opacity)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
-                Text(model.selectedAction?.hint ?? (isPreview ? "\(model.actions.count) 个扇区" : "回到中心取消"))
+                Text(hint)
                     .font(.system(size: hintSize, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
+                    .contentTransition(.opacity)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
             .frame(width: metrics.innerRadius * 2 - size * 0.106)
             .multilineTextAlignment(.center)
+            .scaleEffect(model.selection == nil ? 1 : 1.03)
+            .animation(.easeInOut(duration: 0.18), value: model.selection)
         }
+        .scaleEffect(model.isShown ? 1 : 0.92)
+        .opacity(model.isShown ? 1 : 0)
+        .animation(ringReveal, value: model.isShown)
     }
 }

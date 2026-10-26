@@ -12,6 +12,20 @@ CHANGELOG_FILE="$ROOT/CHANGELOG.md"
 echo "🚀 MonoHui-Kit 一键部署（编译 + 覆盖安装 + 注册服务菜单）"
 echo "═══════════════════════════════════════════════════════════"
 
+# 0. 重复执行抑制
+# 提权执行时命令可能被先以受限方式跑一遍、失败后自动提权重跑，
+# 两次都会推进版本号，导致 v3.4.4 → v3.4.6 这种跳号。
+# 成功结束后写时间戳，30 秒内的第二次启动直接跳过。
+STAMP="${TMPDIR:-/tmp}/monohui-deploy-last-success"
+NOW="$(date +%s)"
+if [ -f "$STAMP" ]; then
+    LAST="$(cat "$STAMP" 2>/dev/null || echo 0)"
+    if [ $((NOW - LAST)) -lt 30 ]; then
+        echo "⚠️  30 秒内已经成功部署过一次，跳过本次（避免重复递增版本号）"
+        exit 0
+    fi
+fi
+
 # 0. 检查本地签名证书（避免更新后 TCC 权限失效）
 SIGNING_IDENTITY="QuickActions Local Signing"
 # 搜索证书指纹或名称 - 即使证书不被信任也能找到
@@ -47,7 +61,7 @@ if [ "$MINOR" -gt 9 ]; then
   MAJOR=$((MAJOR + 1))
 fi
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-echo "$NEW_VERSION" > "$VERSION_FILE"
+# 注意：版本号到安装成功后才落盘，中途失败不会留下已递增的版本号
 echo "📌 版本号: $CURRENT_VERSION → $NEW_VERSION"
 
 # 1. 编译
@@ -62,17 +76,45 @@ pkill -f "/Applications/MonoHui-Kit.app" 2>/dev/null || true
 pkill -f "/Applications/QuickActions.app" 2>/dev/null || true
 sleep 1
 
-# 3. 增量更新到 /Applications（保留目录结构，更接近正常应用更新）
+# 3. 覆盖安装：归档旧包 + 整包复制
+# 不用 rsync --delete：本机删除保护会拒绝在 /Applications 内 unlink，
+# 半更新会留下「新二进制 + 旧资源/旧 plist」的不一致状态。
 echo ""
 echo "3️⃣  更新到 /Applications..."
+ARCHIVE_DIR="$ROOT/Build/archive"
+mkdir -p "$ARCHIVE_DIR"
+PREVIOUS_APP=""
 if [ -d "$INSTALL_DIR" ]; then
-    # 已存在：用 rsync 增量同步（保留目录 inode，TCC 更友好）
-    rsync -a --delete --exclude '.DS_Store' "$APP_BUNDLE/" "$INSTALL_DIR/"
-    echo "   ✅ 增量更新完成"
-else
-    # 首次安装：直接复制
-    cp -R "$APP_BUNDLE" "$INSTALL_DIR"
-    echo "   ✅ 首次安装完成"
+    PREVIOUS_APP="$ARCHIVE_DIR/MonoHui-Kit-installed-$(date +%Y%m%d-%H%M%S).app"
+    if ! mv "$INSTALL_DIR" "$PREVIOUS_APP"; then
+        echo "   ❌ 旧版本无法移出 /Applications，中止安装"
+        exit 1
+    fi
+    touch "$PREVIOUS_APP" 2>/dev/null || true
+    echo "   📦 旧版本已归档到 Build/archive"
+fi
+# cp -R 在目标已存在时会把源目录塞进目标内部，变成 xxx.app/xxx.app，
+# 外层 Info.plist 还是旧版本，等于装了个坏包。这里必须断言目标已清空。
+if [ -e "$INSTALL_DIR" ]; then
+    echo "   ❌ $INSTALL_DIR 仍然存在，中止安装以避免嵌套复制"
+    exit 1
+fi
+if ! cp -R "$APP_BUNDLE" "$INSTALL_DIR"; then
+    echo "   ❌ 复制失败，回滚到安装前的版本"
+    if [ -n "$PREVIOUS_APP" ]; then
+        mv "$PREVIOUS_APP" "$INSTALL_DIR"
+    fi
+    exit 1
+fi
+echo "   ✅ 安装完成"
+echo "$NEW_VERSION" > "$VERSION_FILE"
+
+# 归档只保留最近 2 份，更早的移入废纸篓（避免 Build/archive 无限增长）
+OLD_ARCHIVES="$(ls -1dt "$ARCHIVE_DIR"/*.app 2>/dev/null | tail -n +3 || true)"
+if [ -n "$OLD_ARCHIVES" ]; then
+    while IFS= read -r old; do
+        mv "$old" "$HOME/.Trash/" 2>/dev/null || true
+    done <<< "$OLD_ARCHIVES"
 fi
 
 # 4. 注册 App 到 Launch Services
@@ -176,3 +218,6 @@ echo ""
 echo "8️⃣  启动 MonoHui-Kit..."
 open "$INSTALL_DIR"
 echo "   ✅ 已启动"
+
+# 9. 记录成功时间，供开头的重复执行抑制使用
+date +%s > "$STAMP"

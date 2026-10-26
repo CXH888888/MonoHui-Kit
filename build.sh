@@ -69,7 +69,20 @@ swift build -c release --disable-sandbox 2>&1 | tail -5
 # Step 4: Create .app bundle
 echo ""
 echo "📁 打包 .app..."
-rm -rf "$APP_BUNDLE"
+# 本机删除保护会拒绝 rm -rf 整个 .app（一次删除上百个文件）。
+# 旧产物一律移入 Build/archive/ 归档，归档只保留最近 2 份，更早的移入废纸篓。
+ARCHIVE_DIR="$BUILD_DIR/archive"
+mkdir -p "$ARCHIVE_DIR"
+if [ -d "$APP_BUNDLE" ]; then
+  ARCHIVED="$ARCHIVE_DIR/MonoHui-Kit-build-$(date +%Y%m%d-%H%M%S).app"
+  mv "$APP_BUNDLE" "$ARCHIVED" && touch "$ARCHIVED"
+  OLD_ARCHIVES="$(ls -1dt "$ARCHIVE_DIR"/*.app 2>/dev/null | tail -n +3 || true)"
+  if [ -n "$OLD_ARCHIVES" ]; then
+    while IFS= read -r old; do
+      mv "$old" "$HOME/.Trash/" 2>/dev/null || true
+    done <<< "$OLD_ARCHIVES"
+  fi
+fi
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources/tools"
 
