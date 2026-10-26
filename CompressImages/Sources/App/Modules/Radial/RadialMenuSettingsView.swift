@@ -24,7 +24,6 @@ struct RadialMenuSettingsView: View {
         .onAppear { syncPreview() }
         .onChange(of: settings.sectorCount) { _, _ in syncPreview() }
         .onChange(of: settings.actionIds) { _, _ in syncPreview() }
-        .onChange(of: settings.showLabels) { _, _ in syncPreview() }
         .onChange(of: settings.iconSize) { _, _ in syncPreview() }
         .onChange(of: settings.textSize) { _, _ in syncPreview() }
         .onChange(of: settings.enabled) { _, _ in
@@ -195,21 +194,6 @@ struct RadialMenuSettingsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-
-                SectionDivider()
-
-                HStack {
-                    Text("扇区内显示文字")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleInk)
-                    Spacer()
-                    Toggle("", isOn: $settings.showLabels)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
             }
             .background(Color.appleSurface)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appleDivider, lineWidth: 1))
@@ -363,7 +347,6 @@ struct RadialMenuSettingsView: View {
         previewModel.actions = settings.activeActions
         previewModel.selection = nil
         previewModel.isShown = true
-        previewModel.showLabels = settings.showLabels
         previewModel.iconSize = CGFloat(settings.iconSize)
         previewModel.titleSize = CGFloat(settings.textSize)
     }

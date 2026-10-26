@@ -8,10 +8,8 @@ final class RadialMenuModel {
     var selection: Int?
     var isShown: Bool = false
 
-    /// 以下三项由控制器在每次唤出时从设置写入。
-    /// 面板是复用的，不能依赖「单例被 Observation 追踪」来刷新——
-    /// 之前扇区文字开关失灵就是这个原因。
-    var showLabels: Bool = false
+    /// 由控制器在每次唤出时从设置写入。
+    /// 面板是复用的，不能依赖「单例被 Observation 追踪」来刷新。
     var iconSize: CGFloat = 14
     var titleSize: CGFloat = 12
 
@@ -27,14 +25,12 @@ struct RadialSectorShape: Shape {
     let count: Int
     let inner: CGFloat
     let outer: CGFloat
-    /// 扇区缝隙。0.6° 在 300pt 环上约 1.5pt，只留一道细线，不切断环的连续性
-    var gapDegrees: Double = 0.6
 
     func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
         let step = 360.0 / Double(max(1, count))
-        let start = -90 + Double(index) * step + gapDegrees / 2
-        let end = -90 + Double(index + 1) * step - gapDegrees / 2
+        let start = -90 + Double(index) * step
+        let end = -90 + Double(index + 1) * step
 
         var path = Path()
         path.addArc(center: center, radius: outer,
@@ -48,16 +44,16 @@ struct RadialSectorShape: Shape {
 
 /// 圆环菜单视图。
 ///
-/// 排版参考 Loop / Pieoneer：**扇区只放图标，文字集中在中心**。
-/// 结构自下而上：毛玻璃底座 → 扇区色块 → 图标/文字 → 内外细描边。
+/// 结构自下而上：毛玻璃底座 → 扇区高亮 → 分隔细线 → 图标 → 中心信息。
+/// 扇区默认完全透明，只有选中时才填蓝；分隔靠 0.5px 细线，环保持连续。
 struct RadialMenuView: View {
     let model: RadialMenuModel
     let metrics: RadialMenuMetrics
     var isPreview: Bool = false
 
     private var size: CGFloat { metrics.panelSize }
-    private var iconRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 + size * 0.022 }
-    private var labelRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 - size * 0.062 }
+    /// 图标严格落在环带正中
+    private var iconRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 }
     private var hintSize: CGFloat { max(9, model.titleSize - 3) }
 
     var body: some View {
@@ -75,23 +71,46 @@ struct RadialMenuView: View {
         .animation(.easeOut(duration: 0.13), value: model.selection)
     }
 
-    /// 外圈毛玻璃底座：比扇区外沿再向外 8pt、向内 6pt，
-    /// 让扇区缝隙露出的是磨砂底而不是桌面，环的轮廓更完整。
+    // MARK: - 毛玻璃底座
+
+    /// 外圈毛玻璃底座：比扇区外沿向外 4pt、内沿向内 2pt。
+    /// 用 0.8 不透明度的材质 + 斜向渐变光泽，让壁纸透上来，避免看起来像一块实心灰盘。
     private var backdrop: some View {
         let bandOuter = metrics.outerRadius + 4
         let bandInner = metrics.innerRadius - 2
         let diameter = bandOuter * 2
+        let lineWidth = bandOuter - bandInner
 
-        return Circle()
-            .strokeBorder(.ultraThinMaterial, lineWidth: bandOuter - bandInner)
-            .frame(width: diameter, height: diameter)
-            .overlay(
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                    .frame(width: diameter, height: diameter)
-            )
-            .shadow(color: .black.opacity(0.20), radius: 8, y: 3)
+        return ZStack {
+            Circle()
+                .strokeBorder(.ultraThinMaterial, lineWidth: lineWidth)
+                .frame(width: diameter, height: diameter)
+                .opacity(0.8)
+
+            // 玻璃光泽：左上偏亮、右下偏暗，形成一层很薄的渐变
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.16),
+                            Color.white.opacity(0.02),
+                            Color.black.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: lineWidth
+                )
+                .frame(width: diameter, height: diameter)
+
+            Circle()
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+                .frame(width: diameter, height: diameter)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
     }
+
+    // MARK: - 扇区
 
     private var ring: some View {
         ZStack {
@@ -101,75 +120,82 @@ struct RadialMenuView: View {
                                               inner: metrics.innerRadius, outer: metrics.outerRadius)
 
                 shape
-                    .fill(isSelected
-                          ? AnyShapeStyle(Color.appleBlue)
-                          : AnyShapeStyle(Color.primary.opacity(0.045)))
+                    .fill(isSelected ? AnyShapeStyle(Color.appleBlue) : AnyShapeStyle(Color.clear))
                     .animation(.easeOut(duration: 0.12), value: model.selection)
 
-                sectorContent(index: index, action: action, isSelected: isSelected)
+                iconContent(index: index, action: action, isSelected: isSelected)
             }
 
+            sectorDividers
+
             Circle()
-                .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                .strokeBorder(Color.white.opacity(0.20), lineWidth: 0.5)
                 .frame(width: metrics.outerRadius * 2,
                        height: metrics.outerRadius * 2)
             Circle()
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
                 .frame(width: metrics.innerRadius * 2,
                        height: metrics.innerRadius * 2)
         }
     }
 
+    /// 扇区分隔线：比留缝更精致，环仍然是完整的一圈玻璃
+    private var sectorDividers: some View {
+        let count = max(1, model.actions.count)
+        let step = 360.0 / Double(count)
+
+        return ZStack {
+            ForEach(0..<count, id: \.self) { index in
+                Path { path in
+                    let angle = (-90 + Double(index) * step) * .pi / 180
+                    let dx = CGFloat(cos(angle))
+                    let dy = CGFloat(sin(angle))
+                    path.move(to: CGPoint(x: size / 2 + dx * metrics.innerRadius,
+                                          y: size / 2 + dy * metrics.innerRadius))
+                    path.addLine(to: CGPoint(x: size / 2 + dx * metrics.outerRadius,
+                                             y: size / 2 + dy * metrics.outerRadius))
+                }
+                .stroke(Color.white.opacity(0.10), lineWidth: 0.5)
+            }
+        }
+    }
+
     @ViewBuilder
-    private func sectorContent(index: Int, action: RadialAction, isSelected: Bool) -> some View {
+    private func iconContent(index: Int, action: RadialAction, isSelected: Bool) -> some View {
         let step = 360.0 / Double(max(1, model.actions.count))
         let midDegrees = -90 + (Double(index) + 0.5) * step
         let mid: Double = midDegrees * .pi / 180
         let midCos = CGFloat(cos(mid))
         let midSin = CGFloat(sin(mid))
-        // 选中某个扇区时，其余图标只降一点亮度，不把整块底色变透明
         let idleOpacity: Double = model.selection == nil ? 1 : 0.55
 
-        ZStack {
-            Image(systemName: action.icon)
-                .font(.system(size: model.iconSize, weight: .medium))
-                .foregroundStyle(isSelected ? Color.white : Color.appleInk.opacity(0.75))
-                .opacity(isSelected ? 1 : idleOpacity)
-                .scaleEffect(isSelected ? 1.1 : 1)
-                .position(
-                    x: size / 2 + midCos * iconRadius,
-                    y: size / 2 + midSin * iconRadius
-                )
-
-            if model.showLabels {
-                Text(action.displayName)
-                    .font(.system(size: hintSize, weight: .regular))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.92) : Color.appleSoft)
-                    .opacity(isSelected ? 1 : idleOpacity)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: 58)
-                    .position(
-                        x: size / 2 + midCos * labelRadius,
-                        y: size / 2 + midSin * labelRadius
-                    )
-            }
-        }
+        Image(systemName: action.icon)
+            .font(.system(size: model.iconSize, weight: .medium))
+            .foregroundStyle(isSelected ? Color.white : Color.appleInk.opacity(0.78))
+            .opacity(isSelected ? 1 : idleOpacity)
+            .scaleEffect(isSelected ? 1.1 : 1)
+            .position(
+                x: size / 2 + midCos * iconRadius,
+                y: size / 2 + midSin * iconRadius
+            )
     }
+
+    // MARK: - 中心
 
     private var center: some View {
         ZStack {
             Circle()
                 .fill(.ultraThinMaterial)
+                .opacity(0.9)
                 .overlay(
                     Circle().stroke(
-                        model.selection == nil ? Color.white.opacity(0.18) : Color.appleBlue.opacity(0.5),
+                        model.selection == nil ? Color.white.opacity(0.16) : Color.appleBlue.opacity(0.5),
                         lineWidth: 0.5
                     )
                 )
                 .frame(width: metrics.innerRadius * 2 - size * 0.05,
                        height: metrics.innerRadius * 2 - size * 0.05)
-                .shadow(color: .black.opacity(0.12), radius: 10, y: 3)
+                .shadow(color: .black.opacity(0.10), radius: 10, y: 3)
 
             VStack(spacing: 3) {
                 Text(model.selectedAction?.displayName ?? (isPreview ? "圆环预览" : "移动选择"))

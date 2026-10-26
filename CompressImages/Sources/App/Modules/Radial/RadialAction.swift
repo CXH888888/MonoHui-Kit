@@ -62,7 +62,6 @@ final class RadialMenuSettings {
     private static let enabledKey = "radial_enabled"
     private static let countKey = "radial_sector_count"
     private static let actionsKey = "radial_action_ids"
-    private static let labelsKey = "radial_show_labels"
     private static let sizeKey = "radial_menu_size"
     private static let iconSizeKey = "radial_icon_size"
     private static let textSizeKey = "radial_text_size"
@@ -83,10 +82,6 @@ final class RadialMenuSettings {
     /// 固定保留 8 个槽位，切换数量时不清空其他槽位的配置
     var actionIds: [String] {
         didSet { UserDefaults.standard.set(actionIds, forKey: Self.actionsKey) }
-    }
-
-    var showLabels: Bool {
-        didSet { UserDefaults.standard.set(showLabels, forKey: Self.labelsKey) }
     }
 
     /// 圆环尺寸（面板边长）。改完下次唤出即生效。
@@ -122,7 +117,6 @@ final class RadialMenuSettings {
             Self.enabledKey: true,
             Self.countKey: 8,
             Self.actionsKey: RadialActionCatalog.defaultActionIds,
-            Self.labelsKey: true,
             Self.sizeKey: 320,
             Self.iconSizeKey: 14,
             Self.textSizeKey: 12
@@ -132,7 +126,6 @@ final class RadialMenuSettings {
         sectorCount = Self.allowedCounts.contains(count) ? count : 8
         let ids = defaults.stringArray(forKey: Self.actionsKey) ?? []
         actionIds = Self.normalized(ids)
-        showLabels = defaults.bool(forKey: Self.labelsKey)
         let size = defaults.integer(forKey: Self.sizeKey)
         menuSize = Self.allowedSizes.contains(size) ? size : 320
         let icon = defaults.integer(forKey: Self.iconSizeKey)

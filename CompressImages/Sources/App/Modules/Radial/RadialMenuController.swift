@@ -42,7 +42,6 @@ final class RadialMenuController {
         model.actions = settings.activeActions
         model.selection = nil
         // 面板复用，字号/文字开关必须每次唤出时显式下发
-        model.showLabels = settings.showLabels
         model.iconSize = CGFloat(settings.iconSize)
         model.titleSize = CGFloat(settings.textSize)
         urls = []
