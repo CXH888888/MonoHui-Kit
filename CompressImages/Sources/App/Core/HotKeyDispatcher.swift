@@ -7,8 +7,25 @@ import SwiftUI
 final class HotKeyDispatcher {
     static let shared = HotKeyDispatcher()
 
+    /// 当前快速压缩任务的取消入口，供 HUD 的「取消」按钮中断
+    private var cancelQuickWork: (() -> Void)?
+
     func dispatch(actionId: HotKeyActionId) {
         AppLog.shared.log("收到 actionId=\(actionId.rawValue)（\(actionId.displayName)）", category: "Dispatcher", level: .hot)
+
+        // 圆环菜单要「按下即出现」，不能等通知授权与 Finder 选中项的 AppleScript 往返。
+        // 先显示圆环，选中项异步补上；用户移动到扇区通常要几百毫秒，足够读完。
+        if actionId == .radialMenu {
+            let modifiers = NSEvent.modifierFlags
+            RadialMenuController.shared.show(modifiers: modifiers)
+            Task { @MainActor in
+                let urls = FinderSelection.currentSelection()
+                RadialMenuController.shared.updateURLs(urls)
+                AppLog.shared.log("圆环预载选中项 \(urls.count) 个", category: "Dispatcher")
+            }
+            return
+        }
+
         Task { @MainActor in
             // 确保有通知权限（accessory 常驻模式下也需要能弹通知提示）
             await AppNotification.requestAuthorization()
@@ -42,6 +59,17 @@ final class HotKeyDispatcher {
                 }
                 AppLog.shared.log("显示压缩弹窗 urls=\(urls.count)", category: "Dispatcher")
                 showInteractivePopover(urls: urls, module: "compress")
+            case .videoQuick:
+                guard !urls.isEmpty else {
+                    AppLog.shared.log("videoQuick 无选中文件，发通知", category: "Dispatcher", level: .warn)
+                    AppNotification.send(title: "未检测到选中文件", body: "请先在 Finder 中选中视频再按快捷键")
+                    return
+                }
+                AppLog.shared.log("开始快速视频压缩 \(urls.count) 个文件", category: "Dispatcher")
+                await runQuickVideoCompress(urls: urls)
+            case .radialMenu:
+                // 已在方法开头处理（需要即时响应，不走 0.1s 延迟）
+                break
             case .datefolderInteractive:
                 AppLog.shared.log("显示新建文件夹弹窗 urls=\(urls.count)", category: "Dispatcher")
                 showInteractivePopover(urls: urls, module: "datefolder")
@@ -70,6 +98,15 @@ final class HotKeyDispatcher {
         }
     }
 
+    /// 服务菜单转发来的视频压缩请求
+    func dispatchVideoQuickWithUrls(urls: [URL]) {
+        AppLog.shared.log("服务菜单转发视频压缩 urls=\(urls.count)", category: "Dispatcher", level: .hot)
+        guard !urls.isEmpty else { return }
+        Task { @MainActor in
+            await runQuickVideoCompress(urls: urls)
+        }
+    }
+
     /// 服务菜单转发来的交互弹窗请求（urls 已知，不读 FinderSelection）
     func dispatchInteractiveWithUrls(urls: [URL], actionId: HotKeyActionId) {
         AppLog.shared.log("服务菜单转发交互弹窗 actionId=\(actionId.rawValue) urls=\(urls.count)", category: "Dispatcher", level: .hot)
@@ -87,55 +124,201 @@ final class HotKeyDispatcher {
     // MARK: - 快速压缩
 
     /// 快速压缩统一入口（快捷键 + 服务菜单都走这里）
+    ///
+    /// 与旧实现的关键差异：
+    /// - 选中的非图片文件（视频/文档）在预检阶段就跳过，不再交给 sips 报错
+    /// - 全程显示浮动进度面板，可取消
+    /// - 失败文件逐个记录原因，结束后弹结果窗口并落盘报告
     func runQuickCompress(urls: [URL]) async {
-        let engine = CompressionEngine()
-        let items = urls.map { ImageItem(url: $0) }
         let defaults = UserDefaults.standard
         let qualityRaw = defaults.string(forKey: "quickQuality") ?? QualityLevel.high.rawValue
         let quality = QualityLevel(rawValue: qualityRaw) ?? .high
-        let keepOriginal = defaults.bool(forKey: "quickKeepOriginal")
+        let keepOriginal = defaults.object(forKey: "quickKeepOriginal") as? Bool ?? true
+        let fmtRaw = defaults.string(forKey: "quickFormat") ?? CompressionFormat.jpeg.rawValue
+        let format = CompressionFormat(rawValue: fmtRaw) ?? .jpeg
 
-        // 压缩前先确认工具可用，避免后续静默失败难排查
-        let resolver = ToolResolver()
-        AppLog.shared.log("ToolResolver toolsDir=\(resolver.toolsDir) libExists=\(resolver.libExists)", category: "Dispatcher")
-        for tool in ["pngquant", "oxipng", "cjpeg", "djpeg", "gifsicle", "cwebp"] {
-            if resolver.toolExists(tool) {
-                AppLog.shared.log("工具存在 \(tool)", category: "Dispatcher")
-            }
+        let imageURLs = urls.filter { ImageItem.isSupportedImage($0) }
+        let videoURLs = urls.filter { VideoItem.isSupportedVideo($0) }
+        let otherURLs = urls.filter {
+            !ImageItem.isSupportedImage($0) && !VideoItem.isSupportedVideo($0)
         }
 
-        var successCount = 0
-        var failCount = 0
-        for item in items {
-            let format: CompressionFormat
-            if keepOriginal, let detected = item.estimatedFormat {
-                format = detected
+        // 只选了视频：直接走视频压缩，别让用户以为功能坏了
+        if imageURLs.isEmpty && !videoURLs.isEmpty {
+            AppLog.shared.log("选中项全是视频，转交视频压缩 \(videoURLs.count) 个", category: "Dispatcher")
+            await runQuickVideoCompress(urls: videoURLs)
+            return
+        }
+
+        guard !imageURLs.isEmpty else {
+            let body: String
+            if !videoURLs.isEmpty {
+                body = "选中项是视频，请使用「视频·压缩」"
             } else {
-                let fmtRaw = defaults.string(forKey: "quickFormat") ?? CompressionFormat.jpeg.rawValue
-                format = CompressionFormat(rawValue: fmtRaw) ?? .jpeg
+                body = "请先在 Finder 中选中图片再按快捷键"
             }
-            AppLog.shared.log("压缩 \(item.url.lastPathComponent) → format=\(format.rawValue) quality=\(quality.shortLabel) inputSize=\(item.fileSize)", category: "Dispatcher")
-            let result = await engine.compressSingle(item: item, format: format, quality: quality)
-            switch result.status {
-            case .completed:
-                successCount += 1
-                AppLog.shared.log("✅ 压缩成功 \(item.url.lastPathComponent)", category: "Dispatcher", level: .success)
-            case .failed(let err):
-                failCount += 1
-                AppLog.shared.log("压缩失败 \(item.url.lastPathComponent): \(err)", category: "Dispatcher", level: .error)
-            case .compressing:
-                failCount += 1
-                AppLog.shared.log("压缩异常中断 \(item.url.lastPathComponent)（状态停在 compressing）", category: "Dispatcher", level: .error)
-            case .pending:
-                failCount += 1
-                AppLog.shared.log("压缩未启动 \(item.url.lastPathComponent)（状态停在 pending）", category: "Dispatcher", level: .error)
+            AppLog.shared.log("compressQuick 没有可压缩的图片，发通知", category: "Dispatcher", level: .warn)
+            AppNotification.send(title: "未检测到图片", body: body)
+            return
+        }
+
+        let resolver = ToolResolver()
+        AppLog.shared.log("快速压缩开始 图片=\(imageURLs.count) 视频=\(videoURLs.count) 其他=\(otherURLs.count) keepOriginal=\(keepOriginal)", category: "Dispatcher")
+        AppLog.shared.log("ToolResolver toolsDir=\(resolver.toolsDir) libExists=\(resolver.libExists)", category: "Dispatcher")
+
+        let engine = CompressionEngine()
+        let items = imageURLs.map { ImageItem(url: $0) }
+        let totalCount = urls.count
+
+        await MainActor.run {
+            QuickCompressHUDController.shared.begin(
+                title: "正在压缩图片",
+                total: totalCount,
+                onCancel: { [weak self] in self?.cancelQuickWork?() }
+            )
+        }
+
+        let work = Task {
+            await engine.compress(
+                items: items,
+                format: format,
+                quality: quality,
+                keepOriginal: keepOriginal,
+                onProgress: { progress in
+                    Task { @MainActor in
+                        QuickCompressHUDController.shared.update(progress)
+                    }
+                }
+            )
+        }
+        cancelQuickWork = { work.cancel() }
+        let outcome = await work.value
+        cancelQuickWork = nil
+
+        // 非图片项并入「跳过」，让最终汇总与用户选中的文件数对得上
+        var skipped = outcome.report.skipped
+        if !videoURLs.isEmpty {
+            skipped.append(CompressionFailure(
+                fileName: videoURLs.count == 1 ? videoURLs[0].lastPathComponent : "\(videoURLs.count) 个视频",
+                path: videoURLs.first?.path ?? "",
+                reason: "视频请使用「视频·压缩」（快捷键 ⌥⇧V）",
+                detail: ""
+            ))
+        }
+        if !otherURLs.isEmpty {
+            skipped.append(CompressionFailure(
+                fileName: otherURLs.count == 1 ? otherURLs[0].lastPathComponent : "\(otherURLs.count) 个其他文件",
+                path: otherURLs.first?.path ?? "",
+                reason: "不是图片文件，已跳过",
+                detail: ""
+            ))
+        }
+
+        let report = CompressionReport(
+            startedAt: outcome.report.startedAt,
+            finishedAt: Date(),
+            total: totalCount,
+            succeeded: outcome.report.succeeded,
+            failures: outcome.report.failures,
+            skipped: skipped,
+            cancelled: outcome.report.cancelled
+        )
+
+        AppLog.shared.log("快速压缩完成 \(report.summaryLine)", category: "Dispatcher",
+                          level: report.failedCount > 0 ? .warn : .success)
+
+        if report.failedCount > 0 {
+            report.writeToDisk()
+        }
+
+        await MainActor.run {
+            QuickCompressHUDController.shared.finish(
+                summary: report.summaryLine,
+                failedCount: report.failedCount,
+                autoDismissAfter: report.failedCount > 0 ? 0.6 : 1.8
+            )
+        }
+
+        AppNotification.send(
+            title: report.failedCount > 0 ? "压缩完成，有文件失败" : "压缩完成",
+            body: report.notificationBody
+        )
+
+        if report.failedCount > 0 {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            await MainActor.run {
+                CompressionResultWindowController.shared.show(report: report)
             }
         }
-        AppLog.shared.log("快速压缩完成 成功=\(successCount) 失败=\(failCount)", category: "Dispatcher", level: .success)
+    }
+
+    /// 视频快速压缩（无窗口，带浮动进度）
+    func runQuickVideoCompress(urls: [URL]) async {
+        let defaults = UserDefaults.standard
+        let quality = VideoQuality(rawValue: defaults.string(forKey: "videoQuality") ?? "") ?? .balanced
+        let resolution = VideoResolution(rawValue: defaults.string(forKey: "videoResolution") ?? "") ?? .original
+        let codec = VideoCodec(rawValue: defaults.string(forKey: "videoCodec") ?? "") ?? .h264
+
+        let videoURLs = urls.filter { VideoItem.isSupportedVideo($0) }
+        guard !videoURLs.isEmpty else {
+            AppNotification.send(title: "未检测到视频", body: "请先在 Finder 中选中 mp4/mov 等视频文件")
+            return
+        }
+
+        AppLog.shared.log("视频快速压缩开始 \(videoURLs.count) 个 quality=\(quality.rawValue) resolution=\(resolution.rawValue) codec=\(codec.rawValue)", category: "Dispatcher")
+
+        let engine = VideoCompressionEngine()
+        let items = videoURLs.map { VideoItem(url: $0) }
+
+        await MainActor.run {
+            QuickCompressHUDController.shared.begin(
+                title: "正在压缩视频",
+                total: items.count,
+                onCancel: { [weak self] in self?.cancelQuickWork?() }
+            )
+        }
+
+        let work = Task {
+            await engine.compress(
+                items: items,
+                quality: quality,
+                resolution: resolution,
+                codec: codec,
+                onProgress: { progress in
+                    Task { @MainActor in
+                        QuickCompressHUDController.shared.update(progress)
+                    }
+                }
+            )
+        }
+        cancelQuickWork = { work.cancel() }
+        let outcome = await work.value
+        cancelQuickWork = nil
+
+        let report = outcome.report
+        AppLog.shared.log("视频快速压缩完成 \(report.summaryLine)", category: "Dispatcher",
+                          level: report.failedCount > 0 ? .warn : .success)
+        if report.failedCount > 0 { report.writeToDisk() }
+
+        await MainActor.run {
+            QuickCompressHUDController.shared.finish(
+                summary: report.summaryLine,
+                failedCount: report.failedCount,
+                autoDismissAfter: report.failedCount > 0 ? 0.6 : 1.8
+            )
+        }
+
         AppNotification.send(
-            title: "压缩完成",
-            body: "\(successCount) 个文件压缩成功\(failCount > 0 ? "，\(failCount) 个失败" : "")"
+            title: report.failedCount > 0 ? "视频压缩完成，有文件失败" : "视频压缩完成",
+            body: report.notificationBody
         )
+
+        if report.failedCount > 0 {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            await MainActor.run {
+                CompressionResultWindowController.shared.show(report: report)
+            }
+        }
     }
 
     // MARK: - 弹出交互弹窗

@@ -5,26 +5,34 @@ struct InteractivePopover: View {
     @State private var imageItems: [ImageItem] = []
     @State private var isCompressing = false
     @State private var showResult = false
+    @State private var progress: CompressionProgress?
+    @State private var report: CompressionReport?
+    @State private var workTask: Task<Void, Never>?
+
+    private let panelHeight: CGFloat = 470
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             headerArea
             Divider().padding(.horizontal, -24)
             pillPickers
-            Spacer()
+            if isCompressing { progressRow }
+            if let report, report.failedCount > 0 { failureArea(report) }
+            Spacer(minLength: 0)
             compressButton
         }
         .padding(24)
-        .frame(width: 580, height: 420)
+        .frame(width: 580, height: panelHeight)
         .background(Color.appleCanvas)
         .onAppear {
             if !state.preloadedURLs.isEmpty {
-                imageItems = state.preloadedURLs.map { ImageItem(url: $0) }
+                let urls = state.preloadedURLs.filter { ImageItem.isSupportedImage($0) }
+                imageItems = urls.map { ImageItem(url: $0) }
             }
             AppLog.shared.log("压缩弹窗 onAppear preloadedURLs=\(state.preloadedURLs.count) imageItems=\(imageItems.count)", category: "Dispatcher")
             DispatchQueue.main.async {
                 guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
-                window.setContentSize(NSSize(width: 580, height: 420))
+                window.setContentSize(NSSize(width: 580, height: panelHeight))
                 window.styleMask.remove(.resizable)
                 window.isMovableByWindowBackground = true
                 FinderSelection.positionWindowNearFinder(window)
@@ -77,7 +85,8 @@ struct InteractivePopover: View {
     }
 
     private var pillPickers: some View {
-        VStack(spacing: 12) {
+        @Bindable var bindableState = state
+        return VStack(spacing: 12) {
             HStack(spacing: 10) {
                 Text("格式")
                     .font(.system(size: 13, weight: .medium))
@@ -86,10 +95,15 @@ struct InteractivePopover: View {
                 ForEach(CompressionFormat.allCases) { fmt in
                     PillButton(
                         label: fmt.displayName,
-                        isSelected: state.selectedFormat.id == fmt.id,
-                        action: { state.selectedFormat = fmt }
+                        isSelected: bindableState.selectedFormat.id == fmt.id && !state.keepOriginalFormat,
+                        action: {
+                            // 点格式＝明确要转换，自动退出「保持原格式」
+                            bindableState.keepOriginalFormat = false
+                            bindableState.selectedFormat = fmt
+                        }
                     )
                 }
+                .opacity(state.keepOriginalFormat ? 0.45 : 1)
                 Spacer(minLength: 0)
             }
 
@@ -101,13 +115,98 @@ struct InteractivePopover: View {
                 ForEach(QualityLevel.allCases) { ql in
                     PillButton(
                         label: ql.displayName,
-                        isSelected: state.selectedQuality.id == ql.id,
-                        action: { state.selectedQuality = ql }
+                        isSelected: bindableState.selectedQuality.id == ql.id,
+                        action: { bindableState.selectedQuality = ql }
                     )
                 }
                 Spacer(minLength: 0)
             }
+
+            HStack(spacing: 10) {
+                Text("")
+                    .frame(width: 28)
+                PillButton(
+                    label: state.keepOriginalFormat ? "✓ 保持原格式" : "保持原格式",
+                    isSelected: state.keepOriginalFormat,
+                    action: { bindableState.keepOriginalFormat.toggle() }
+                )
+                Text("按每个文件自身格式压缩，不转换")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleMuted)
+                Spacer(minLength: 0)
+            }
         }
+    }
+
+    private var progressRow: some View {
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.appleSurface3)
+                    Capsule()
+                        .fill(Color.appleBlue)
+                        .frame(width: max(0, geo.size.width * (progress?.fraction ?? 0)))
+                        .animation(.easeOut(duration: 0.2), value: progress?.fraction ?? 0)
+                }
+            }
+            .frame(height: 4)
+
+            HStack {
+                Text(progress?.currentFileName ?? "准备中…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Text("\(progress?.completed ?? 0)/\(imageItems.count)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.appleSoft)
+            }
+        }
+    }
+
+    private func failureArea(_ report: CompressionReport) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orange)
+                Text("\(report.failedCount) 个文件失败")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.appleInk)
+                Spacer()
+                Button("查看全部") {
+                    CompressionResultWindowController.shared.show(report: report)
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.appleBlue)
+            }
+
+            ForEach(report.failures.prefix(3)) { failure in
+                HStack(alignment: .top, spacing: 6) {
+                    Text(failure.fileName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.appleInk)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(width: 170, alignment: .leading)
+                    Text(failure.reason)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.red.opacity(0.85))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
+            if report.failedCount > 3 {
+                Text("另有 \(report.failedCount - 3) 个失败…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleMuted)
+            }
+        }
+        .padding(10)
+        .background(Color.red.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var compressButton: some View {
@@ -142,40 +241,41 @@ struct InteractivePopover: View {
             return
         }
         isCompressing = true
-        let items = imageItems
+        report = nil
+        progress = CompressionProgress(completed: 0, total: imageItems.count, currentFileName: "")
 
-        Task {
-            let engine = CompressionEngine()
-            let results = await engine.compress(
+        let items = imageItems
+        let format = state.selectedFormat
+        let quality = state.selectedQuality
+        let keepOriginal = state.keepOriginalFormat
+        let engine = CompressionEngine()
+
+        workTask = Task {
+            let outcome = await engine.compress(
                 items: items,
-                format: state.selectedFormat,
-                quality: state.selectedQuality
+                format: format,
+                quality: quality,
+                keepOriginal: keepOriginal,
+                onProgress: { p in
+                    Task { @MainActor in
+                        self.progress = p
+                    }
+                }
             )
 
             await MainActor.run {
-                var successCount = 0
-                var failCount = 0
-                for item in results {
-                    switch item.status {
-                    case .completed:
-                        successCount += 1
-                        AppLog.shared.log("压缩成功 \(item.url.lastPathComponent)", category: "Dispatcher", level: .success)
-                    case .failed(let reason):
-                        failCount += 1
-                        AppLog.shared.log("压缩失败 \(item.url.lastPathComponent): \(reason)", category: "Dispatcher", level: .error)
-                    default:
-                        break
-                    }
-                }
-                AppLog.shared.log("压缩完成 成功=\(successCount)/\(items.count) 失败=\(failCount)", category: "Dispatcher", level: .success)
-                if successCount > 0 {
-                    // 仅成功时设 showResult，全失败时保持 false 让用户能重试
+                let result = outcome.report
+                self.report = result
+                self.progress = nil
+                self.isCompressing = false
+                AppLog.shared.log("压缩弹窗完成 \(result.summaryLine)", category: "Dispatcher",
+                                  level: result.failedCount > 0 ? .warn : .success)
+                if result.failedCount > 0 { result.writeToDisk() }
+
+                if result.failedCount == 0 && result.succeeded > 0 {
+                    // 全部成功：标记完成并自动关闭
                     showResult = true
-                    AppNotification.send(title: "压缩完成", body: "\(successCount) 个文件已压缩")
-                }
-                // 压缩成功后 0.6s 自动关弹窗（全失败时不关，保留状态供查看）
-                // 注意：锁和 isCompressing 延迟到窗口关闭时才重置，防止 0.6s 窗口期内重复触发
-                if successCount > 0 {
+                    AppNotification.send(title: "压缩完成", body: "\(result.succeeded) 个文件已压缩")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                         AppLog.shared.log("压缩弹窗完成，关闭窗口", category: "Dispatcher")
                         for window in NSApp.windows where window.level == .screenSaver {
@@ -185,8 +285,12 @@ struct InteractivePopover: View {
                         CompressionEngine.releaseCompressLock()
                     }
                 } else {
-                    // 全失败：保留窗口供查看，但仍需释放锁让用户能重试
-                    isCompressing = false
+                    // 有失败（或全部失败）：保留窗口展示失败清单，释放锁允许重试
+                    showResult = false
+                    AppNotification.send(
+                        title: "压缩完成，有文件失败",
+                        body: result.notificationBody
+                    )
                     CompressionEngine.releaseCompressLock()
                 }
             }

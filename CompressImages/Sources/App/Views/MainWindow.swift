@@ -6,10 +6,12 @@ struct MainWindow: View {
     @State private var imageItems: [ImageItem] = []
     @State private var isDropTargeted = false
     @State private var isCompressing = false
-    @State private var compressionResults: [String] = []
+    @State private var progress: CompressionProgress?
+    @State private var report: CompressionReport?
     @State private var showFilePicker = false
     @State private var hoveredItemID: UUID?
     @State private var showQuickCompressSettings = false
+    @State private var workTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -20,9 +22,9 @@ struct MainWindow: View {
                     thumbnailGrid
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    if !compressionResults.isEmpty {
-                        Divider().padding(.horizontal, 20)
-                        resultsList
+                    if let report {
+                        Divider()
+                        resultsPanel(report)
                     }
 
                     Divider()
@@ -55,13 +57,15 @@ struct MainWindow: View {
         .background(DropTargetView(imageItems: $imageItems, isTargeted: $isDropTargeted))
         .onAppear {
             if !state.preloadedURLs.isEmpty {
-                imageItems = state.preloadedURLs.map { ImageItem(url: $0) }
+                let urls = state.preloadedURLs.filter { ImageItem.isSupportedImage($0) }
+                if !urls.isEmpty { imageItems = urls.map { ImageItem(url: $0) } }
             }
         }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.image],
                       allowsMultipleSelection: true) { result in
             if case .success(let urls) = result {
                 imageItems = urls.map { ImageItem(url: $0) }
+                report = nil
             }
         }
         .sheet(isPresented: $showQuickCompressSettings) {
@@ -160,7 +164,7 @@ struct MainWindow: View {
                     .contentShape(Rectangle())
             }
 
-                Text("支持 PNG, JPEG, GIF, WebP, AVIF, JPEG XL, SVG")
+            Text("支持 PNG, JPEG, GIF, WebP, AVIF, JPEG XL, SVG, HEIC, TIFF")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color.appleMuted)
 
@@ -226,7 +230,7 @@ struct MainWindow: View {
             ZStack(alignment: .topTrailing) {
                 ThumbnailView(url: item.url, size: 116, cornerRadius: 12)
 
-                if isHovered {
+                if isHovered && !isCompressing {
                     Button(action: { imageItems.removeAll { $0.id == item.id } }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 22))
@@ -246,18 +250,129 @@ struct MainWindow: View {
                 .truncationMode(.middle)
                 .frame(width: 116)
 
-            Text(formatFileSize(item.fileSize))
+            Text(cardSubtitle(item))
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.appleSoft)
+                .foregroundStyle(cardSubtitleColor(item))
+                .lineLimit(1)
+                .frame(width: 116)
         }
         .onHover { hovering in
             hoveredItemID = hovering ? item.id : nil
         }
     }
 
+    private func cardSubtitle(_ item: ImageItem) -> String {
+        switch item.status {
+        case .completed(let result):
+            return "\(formatFileSize(result.outputSize))  ↓\(String(format: "%.0f", abs(result.savedPercent)))%"
+        case .failed:
+            return "失败"
+        case .skipped:
+            return "已跳过"
+        case .compressing:
+            return "压缩中…"
+        case .pending:
+            return formatFileSize(item.fileSize)
+        }
+    }
+
+    private func cardSubtitleColor(_ item: ImageItem) -> Color {
+        switch item.status {
+        case .failed: return Color.red
+        case .completed: return Color.appleSuccess
+        case .skipped: return Color.appleMuted
+        default: return Color.appleSoft
+        }
+    }
+
+    // MARK: - 结果面板
+
+    private func resultsPanel(_ report: CompressionReport) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: report.failedCount > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(report.failedCount > 0 ? Color.orange : Color.appleSuccess)
+                Text(report.summaryLine)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.appleInk)
+                Text("· \(report.elapsedText)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleSoft)
+                Spacer()
+
+                if report.failedCount > 0 {
+                    Button("复制清单") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(report.plainText(), forType: .string)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleBlue)
+
+                    Button("定位失败文件") {
+                        let urls = report.failures.map { URL(fileURLWithPath: $0.path) }
+                        NSWorkspace.shared.activateFileViewerSelecting(urls)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleBlue)
+
+                    Button("完整报告") {
+                        CompressionResultWindowController.shared.show(report: report)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleBlue)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            if report.failures.isEmpty {
+                Text("全部文件压缩成功")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleSoft)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 10)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(report.failures) { failure in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(failure.fileName)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Color.appleInk)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .frame(width: 180, alignment: .leading)
+                                Text(failure.reason)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.red.opacity(0.85))
+                                    .lineLimit(2)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 3)
+                        }
+                    }
+                }
+                .frame(height: 84)
+            }
+        }
+        .background(Color.appleSurface)
+    }
+
+    // MARK: - 底部参数区
+
     private var bottomBar: some View {
         @Bindable var bindableState = state
         return VStack(spacing: 10) {
+            if isCompressing {
+                progressRow
+            }
+
             HStack(spacing: 8) {
                 Text("格式")
                     .font(.system(size: 11, weight: .medium))
@@ -266,11 +381,24 @@ struct MainWindow: View {
                 ForEach(CompressionFormat.allCases) { fmt in
                     PillButton(
                         label: fmt.displayName,
-                        isSelected: bindableState.selectedFormat.id == fmt.id,
-                        action: { bindableState.selectedFormat = fmt }
+                        isSelected: bindableState.selectedFormat.id == fmt.id && !state.keepOriginalFormat,
+                        action: {
+                            // 点格式＝明确要转换，自动退出「保持原格式」
+                            bindableState.keepOriginalFormat = false
+                            bindableState.selectedFormat = fmt
+                        }
                     )
                 }
-                Spacer(minLength: 0)
+                .opacity(state.keepOriginalFormat ? 0.45 : 1)
+
+                Spacer(minLength: 8)
+
+                PillButton(
+                    label: state.keepOriginalFormat ? "✓ 保持原格式" : "保持原格式",
+                    isSelected: state.keepOriginalFormat,
+                    action: { bindableState.keepOriginalFormat.toggle() }
+                )
+                .help("按每个文件自身的格式压缩，不做格式转换（HEIC 用系统编码器）")
             }
 
             HStack(spacing: 8) {
@@ -286,6 +414,13 @@ struct MainWindow: View {
                     )
                 }
                 Spacer(minLength: 0)
+
+                if isCompressing {
+                    Button("取消") { workTask?.cancel() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleSoft)
+                }
 
                 Button(action: compress) {
                     HStack(spacing: 6) {
@@ -314,64 +449,71 @@ struct MainWindow: View {
         .background(Color.appleSurface)
     }
 
-    private var resultsList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(compressionResults, id: \.self) { line in
-                    Text(line)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
-                        .foregroundStyle(line.hasPrefix("合计") ? Color.appleInk : Color.appleSoft)
+    private var progressRow: some View {
+        VStack(spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.appleSurface3)
+                    Capsule()
+                        .fill(Color.appleBlue)
+                        .frame(width: max(0, geo.size.width * (progress?.fraction ?? 0)))
+                        .animation(.easeOut(duration: 0.2), value: progress?.fraction ?? 0)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
+            .frame(height: 4)
+
+            HStack {
+                Text(progress?.currentFileName ?? "准备中…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.appleMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Text("\(progress?.completed ?? 0)/\(imageItems.count)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.appleSoft)
+            }
         }
-        .frame(height: 120)
-        .background(Color.appleSurface)
     }
 
-    private func compress() {
-        isCompressing = true
-        compressionResults = []
-        let items = imageItems
+    // MARK: - 执行
 
-        Task {
-            let engine = CompressionEngine()
-            let results = await engine.compress(
+    private func compress() {
+        guard !isCompressing else { return }
+        isCompressing = true
+        report = nil
+        progress = CompressionProgress(completed: 0, total: imageItems.count, currentFileName: "")
+
+        let items = imageItems
+        let format = state.selectedFormat
+        let quality = state.selectedQuality
+        let keepOriginal = state.keepOriginalFormat
+        let engine = CompressionEngine()
+
+        workTask = Task {
+            let outcome = await engine.compress(
                 items: items,
-                format: state.selectedFormat,
-                quality: state.selectedQuality
+                format: format,
+                quality: quality,
+                keepOriginal: keepOriginal,
+                onProgress: { p in
+                    Task { @MainActor in
+                        self.progress = p
+                    }
+                }
             )
 
             await MainActor.run {
-                var lines: [String] = []
-                var totalIn: UInt64 = 0
-                var totalOut: UInt64 = 0
-
-                for (_, r) in results.enumerated() {
-                    switch r.status {
-                    case .completed(let cr):
-                        totalIn += cr.inputSize
-                        totalOut += cr.outputSize
-                        let pct = String(format: "%.1f", abs(cr.savedPercent))
-                        let arrow = cr.savedBytes >= 0 ? "↓" : "↑"
-                        lines.append("\(r.fileName)  \(formatFileSize(cr.inputSize)) → \(formatFileSize(cr.outputSize))  \(arrow)\(pct)%")
-                    case .failed(let err):
-                        lines.append("\(r.fileName)  ✕ \(err)")
-                    default:
-                        break
-                    }
-                }
-
-                if totalIn > 0 {
-                    let totalPct = String(format: "%.1f", (1 - Double(totalOut) / Double(totalIn)) * 100)
-                    lines.append("")
-                    lines.append("合计: \(formatFileSize(totalIn)) → \(formatFileSize(totalOut))  ↓\(totalPct)%")
-                }
-
-                compressionResults = lines
-                imageItems = results
-                isCompressing = false
+                self.imageItems = outcome.items
+                self.report = outcome.report
+                self.isCompressing = false
+                self.progress = nil
+                self.workTask = nil
+                if outcome.report.failedCount > 0 { outcome.report.writeToDisk() }
+                AppNotification.send(
+                    title: outcome.report.failedCount > 0 ? "压缩完成，有文件失败" : "压缩完成",
+                    body: outcome.report.notificationBody
+                )
             }
         }
     }

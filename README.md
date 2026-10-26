@@ -48,10 +48,46 @@ bash build.sh
 | 快捷键 `compressInteractive`（默认 ⌥⇧I） | 同压缩为… |
 
 - 接收文件类型：`public.image`
-- 支持格式：PNG、JPEG、GIF、WebP、AVIF、JPEG XL、SVG
+- 支持格式：PNG、JPEG、GIF、WebP、AVIF、JPEG XL、SVG、HEIC/HEIF、TIFF
 - **快速压缩参数独立于主界面**：存在 UserDefaults 的 `quickQuality` / `quickFormat` / `quickKeepOriginal`，主界面参数改动不影响快速压缩
-- 压缩弹窗成功后 0.6s 自动关闭；全失败时保留窗口供查看
+- **保持原格式**：主界面与压缩弹窗均可开启，按每个文件自身格式压缩；HEIC/TIFF 由系统 sips 重编码（TIFF 用 LZW）
+- **进度与取消**：批量压缩显示「已完成/总数 + 当前文件名 + 进度条」，可中途取消；快速压缩用屏幕底部浮动面板展示
+- **失败可追溯**：失败文件逐个记录原因，通知正文列出前 3 个失败文件名；结果窗口可查看全部、复制清单、定位文件，报告落盘到 `~/.quickactions/reports/`
+- 压缩弹窗成功后 0.6s 自动关闭；有失败时保留窗口供查看
 - 压缩弹窗支持回车触发主按钮
+
+### 视频压缩
+
+| 入口 | 行为 |
+|---|---|
+| 服务菜单 `视频·压缩` | 按功能页设置压缩，不弹窗，浮动面板显示进度，完成后通知 |
+| 快捷键 `videoQuick`（默认 ⌥⇧V） | 同上 |
+| 侧栏「视频压缩」 | 拖入视频 → 选质量/分辨率/编码 → 压缩 |
+
+- 接收文件类型：`public.movie`（MP4、MOV、M4V、3GP、TS；其他容器依赖系统解码器，不支持时会在结果里说明）
+- 质量：高质量 / 平衡 / 小体积（按「分辨率 × 帧率 × 每像素比特数」估算目标码率，并受源码率上限约束）
+- 分辨率：原分辨率 / 1080p / 720p / 480p
+- 编码：H.264（兼容性最好）/ HEVC（同画质体积约小 40%）
+- 输出：源目录 `原名-压缩.mp4`，音频重编码为 48kHz 立体声 AAC 128k
+- 基于 AVFoundation + VideoToolbox 硬件编码，不依赖 ffmpeg，安装包体积不变
+- 压缩后体积未减小时删除产物并提示「源文件已足够紧凑」
+
+### 圆环菜单
+
+| 入口 | 行为 |
+|---|---|
+| 快捷键 `radialMenu`（默认 ⌥⇧R） | 按住唤出圆环，移动选择，松开修饰键执行 |
+| 侧栏「圆环菜单」 | 配置扇区数量、每个扇区的动作、实时预览 |
+| 菜单栏「圆环菜单」 | 打开配置页 |
+
+- **触发模型**：按住快捷键 → 光标处淡入圆环 → 60Hz 轮询鼠标位置高亮扇区 → 松开修饰键执行；光标回到中心或按 Esc 取消
+- **不新增权限**：不使用 `CGEventTap`，只读 `NSEvent.mouseLocation`、`NSEvent.modifierFlags` 与 `CGEventSource.keyState`，因此不需要「输入监控」授权
+- 扇区数量：4 / 6 / 8；每个扇区可从内置动作中选择，选中已被占用的动作时两者交换位置
+- 内置动作：快速压缩、压缩为…、视频压缩、格式转化、快速改名、新建文件夹、移入暂存箱、打开设置
+- 动作作用于唤出圆环时 Finder 中选中的文件；选中项异步读取，不阻塞圆环出现
+- **全局热键**：切到其他 App 时只注销依赖 Finder 选中项的热键，圆环热键保留
+- 贴边保护：面板会向内夹取，光标移动不足 8pt 时不选中任何扇区，避免误触
+- 调试：`QuickActions --module radial --mode preview` 在光标处展示圆环 3 秒
 
 ### 日期文件夹
 
@@ -142,7 +178,9 @@ Sources/App/
 │   ├── ModuleRegistry.swift  — 模块注册表
 │   └── ServiceMenuInstaller.swift— .workflow 数据驱动安装/移除
 ├── Engine/
-│   ├── CompressionEngine.swift— 压缩引擎（actor）+ 压缩锁
+│   ├── CompressionEngine.swift— 压缩引擎（actor）+ 并发上限 + 超时 + 进度
+│   ├── InputNormalizer.swift — 编码器不支持的源格式先用 sips 预解码
+│   ├── CompressionReport.swift— 失败清单 / 汇总 / 报告落盘
 │   └── ToolResolver.swift    — 压缩工具路径解析
 ├── Models/
 │   ├── CompressionFormat.swift
@@ -150,6 +188,16 @@ Sources/App/
 │   └── QualityLevel.swift
 ├── Modules/
 │   ├── Compress/CompressModule.swift
+│   ├── Video/
+│   │   ├── VideoCompressionEngine.swift— AVAssetReader/Writer 转码 + 进度
+│   │   ├── VideoCompressView.swift     — 视频压缩功能页
+│   │   └── VideoCompressModule.swift   — 服务菜单定义
+│   ├── Radial/
+│   │   ├── RadialAction.swift          — 动作目录 + 配置持久化
+│   │   ├── RadialMenuGeometry.swift    — 扇区角度与命中判定
+│   │   ├── RadialMenuView.swift        — 圆环视图（扇区/图标/中心区）
+│   │   ├── RadialMenuController.swift  — 面板、轮询、动作分发
+│   │   └── RadialMenuSettingsView.swift— 配置页
 │   └── DateFolder/
 │       ├── DateFolderModule.swift
 │       ├── DateFolderEngine.swift— 文件夹创建 + 创建锁
@@ -158,6 +206,8 @@ Sources/App/
 ├── Views/
 │   ├── MainWindow.swift       — 图片压缩主界面
 │   ├── InteractivePopover.swift— 压缩弹窗
+│   ├── QuickCompressHUD.swift — 快速压缩浮动进度面板
+│   ├── CompressionResultView.swift— 失败清单 / 报告窗口
 │   ├── HotKeySettingsView.swift— 快捷键设置页
 │   ├── SettingsView.swift     — 设置页（权限/服务菜单/诊断日志/关于）
 │   ├── DiagnosticsView.swift  — 诊断日志组件
@@ -228,6 +278,48 @@ SwiftUI `WindowGroup` 会在 `applicationDidFinishLaunching` 之前渲染 `Conte
 ### 10. FinderSelection 重试机制
 
 AppleScript 读 Finder 选中项偶发延迟，`HotKeyDispatcher.dispatch` 首次读取为空时等 0.15s 重试一次。快捷键触发瞬间可能有竞态，给 Finder 一点时间确保选中状态稳定。
+
+### 11. 编码器输入格式各不相同，必须归一化
+
+pngquant/oxipng 只吃 PNG，gifsicle 只吃 GIF，avifenc 只吃 JPEG/PNG，cwebp 不吃 GIF/AVIF。
+把任意源文件直接交给目标编码器会成片失败（日志里的 `Cannot extract image from file`、
+`Unsupported file format AVIF` 都是这么来的）。`InputNormalizer` 在编码前用系统 sips
+把不兼容的源解码成临时 PNG/GIF，用完清理。新增格式支持时，**先确认目标编码器能不能读**，
+再决定是否需要在 `canEncodeDirectly` 里登记。
+
+### 12. 批量压缩必须有并发上限
+
+`withTaskGroup` 里为每个文件 `addTask` 会让几百个文件同时拉起几百个进程，
+触发系统进程数上限与内存压力，表现为「批量压缩总有随机几个失败」。
+`CompressionEngine.maxConcurrent = 4`（视频 2）用「完成一个补一个」的方式限流。
+
+### 13. 子进程 stderr 必须边跑边读
+
+工具输出超过管道缓冲区（约 64KB）时会阻塞在 write 上；如果父进程等进程退出后才读 stderr，
+就是死锁。`run()` 用 `Task.detached` 在启动前就开始 `readDataToEndOfFile`，并在 `proc.run()`
+后关闭父进程持有的写端，否则永远等不到 EOF。另配 240 秒超时看门狗，避免单文件拖死整批。
+
+### 14. 视频压缩走 AVFoundation 而不是 ffmpeg
+
+内置静态 ffmpeg 会让安装包增大约 40~80MB。`VideoTranscoder` 用 AVAssetReader → AVAssetWriter，
+视频轨按目标码率重编码（VideoToolbox 硬件加速），音频轨重编码为 48kHz 立体声 AAC。
+音频**不要**用 `outputSettings: nil` 透传：实测对 mp4/AAC 源 `writer.canAdd` 返回 false，
+音轨被静默丢弃且不报错。
+
+### 15. 圆环菜单不装 CGEventTap
+
+Loop / Pieoneer 都用 `CGEventTap(.listenOnly)` 监听鼠标与按键，因此要求「输入监控」授权。
+我们用另一条路：Carbon 热键负责唤出，`NSEvent.mouseLocation` 与 `NSEvent.modifierFlags`
+在 60Hz 定时器里轮询，松开修饰键即提交，Esc 用 `CGEventSource.keyState` 读键态。
+全程零新增权限。代价是只能「组合键按住」，不能「单按一个修饰键」。
+
+面板本身复用 `NSPanel + .borderless + .nonactivatingPanel + ignoresMouseEvents = true`，
+层级 `.screenSaver`，与 Loop 的做法一致；面板常驻复用，避免每次唤出都重建视图。
+
+### 16. 全局热键与 Finder 热键分层
+
+`HotKeyActionId.isGlobal` 标记圆环菜单。Finder 激活时注册全部热键；其他 App 激活时只
+`unregisterNonGlobal()`，保留圆环。新增动作时想清楚它是否依赖 Finder 选中项，再决定是否全局。
 
 ## 维护注意事项
 

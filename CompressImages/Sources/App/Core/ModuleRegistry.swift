@@ -2,5 +2,6 @@ import Foundation
 
 enum ModuleRegistry {
     static let allActions: [ServiceAction] =
-        CompressModule.serviceActions + DateFolderModule.serviceActions + QuickRenameModule.serviceActions + ShelfModule.serviceActions
+        CompressModule.serviceActions + VideoCompressModule.serviceActions
+        + DateFolderModule.serviceActions + QuickRenameModule.serviceActions + ShelfModule.serviceActions
 }

@@ -45,6 +45,8 @@ struct KeyCombination: Codable, Equatable {
 enum HotKeyActionId: String, CaseIterable {
     case compressQuick          = "compress.quick"
     case compressInteractive    = "compress.interactive"
+    case videoQuick             = "video.quick"
+    case radialMenu             = "radial.menu"
     case datefolderInteractive  = "datefolder.interactive"
     case quickRename            = "quickrename"
 
@@ -52,6 +54,8 @@ enum HotKeyActionId: String, CaseIterable {
         switch self {
         case .compressQuick:         return "快速压缩"
         case .compressInteractive:   return "压缩为…"
+        case .videoQuick:            return "视频压缩"
+        case .radialMenu:            return "圆环菜单"
         case .datefolderInteractive: return "新建文件夹弹窗"
         case .quickRename:           return "快速改名"
         }
@@ -60,10 +64,16 @@ enum HotKeyActionId: String, CaseIterable {
     var category: String {
         switch self {
         case .compressQuick, .compressInteractive: return "图片压缩"
+        case .videoQuick:                           return "视频压缩"
+        case .radialMenu:                           return "圆环菜单"
         case .datefolderInteractive:                return "文件命名"
         case .quickRename:                          return "文件命名"
         }
     }
+
+    /// 全局热键：不随 Finder 失活而注销。
+    /// 圆环菜单是跨 App 的操作入口，必须常驻；其余动作依赖 Finder 选中项，只在 Finder 前台注册。
+    var isGlobal: Bool { self == .radialMenu }
 
     var userDefaultsKey: String { "hotkey_\(rawValue)" }
 }
@@ -98,9 +108,11 @@ final class HotKeyManager {
             object: nil
         )
 
-        // 启动时如果 Finder 已在前台，立即注册
+        // 启动时如果 Finder 已在前台，注册全部；否则只注册全局热键
         if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" {
             registerAllFromSettings()
+        } else {
+            registerGlobalOnly()
         }
         AppLog.shared.log("Finder watcher 已安装（当前 Finder 前台：\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder")）", category: "HotKey")
     }
@@ -112,10 +124,10 @@ final class HotKeyManager {
             AppLog.shared.log("Finder 激活，注册热键", category: "HotKey", level: .success)
             registerAllFromSettings()
         } else {
-            // 其他 App 激活，注销热键避免冲突
+            // 其他 App 激活：只注销依赖 Finder 选中项的热键，全局热键（圆环）保留
             if !registered.isEmpty {
-                AppLog.shared.log("\(bid) 激活，注销热键避免冲突", category: "HotKey")
-                unregisterAll()
+                AppLog.shared.log("\(bid) 激活，注销非全局热键", category: "HotKey")
+                unregisterNonGlobal()
             }
         }
     }
@@ -187,39 +199,75 @@ final class HotKeyManager {
 
     // MARK: - 从配置批量注册
 
+    /// 注册全部热键（Finder 在前台时使用）
     func registerAllFromSettings() {
         unregisterAll()
         AppLog.shared.log("开始批量注册热键", category: "HotKey")
         for actionId in HotKeyActionId.allCases {
-            let combo: KeyCombination
-            let source: String
-            if let data = UserDefaults.standard.data(forKey: actionId.userDefaultsKey),
-               let decoded = try? JSONDecoder().decode(KeyCombination.self, from: data) {
-                combo = decoded
-                source = "UserDefaults"
-            } else if let data = UserDefaults.standard.data(forKey: actionId.userDefaultsKey) {
-                // 有数据但解码失败：配置损坏，记日志并回退默认
-                AppLog.shared.log("\(actionId.rawValue) 配置损坏，回退默认值", category: "HotKey", level: .warn)
-                let def = defaultCombination(for: actionId)!
-                combo = def
-                source = "默认值（配置损坏）"
-            } else if let def = defaultCombination(for: actionId) {
-                combo = def
-                source = "默认值"
-            } else {
-                AppLog.shared.log("跳过 \(actionId.rawValue)（无组合）", category: "HotKey", level: .warn)
-                continue
-            }
-            do {
-                AppLog.shared.log("准备注册 \(actionId.rawValue) combo=\(combo.displayName) 来源=\(source)", category: "HotKey")
-                try register(combo, id: actionId.rawValue) { [weak self] in
-                    self?.handleHotKey(actionId: actionId)
-                }
-            } catch {
-                AppLog.shared.log("注册失败 \(actionId.rawValue): \(error.localizedDescription)", category: "HotKey", level: .error)
-            }
+            registerFromSettings(actionId)
         }
         AppLog.shared.log("批量注册完成，当前注册数=\(registered.count)", category: "HotKey", level: .success)
+    }
+
+    /// 只注册全局热键（其他 App 在前台时使用）
+    func registerGlobalOnly() {
+        for actionId in HotKeyActionId.allCases where actionId.isGlobal {
+            registerFromSettings(actionId)
+        }
+        AppLog.shared.log("注册全局热键，当前注册数=\(registered.count)", category: "HotKey")
+    }
+
+    /// 注销非全局热键（切到其他 App 时使用）
+    func unregisterNonGlobal() {
+        for actionId in HotKeyActionId.allCases where !actionId.isGlobal {
+            unregister(id: actionId.rawValue)
+        }
+    }
+
+    /// 按当前前台 App 决定注册范围
+    func refreshForFrontmostApp() {
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" {
+            registerAllFromSettings()
+        } else {
+            registerGlobalOnly()
+        }
+    }
+
+    private func registerFromSettings(_ actionId: HotKeyActionId) {
+        // 圆环关闭时不占用快捷键，避免与用户其他 App 冲突
+        if actionId == .radialMenu, !RadialMenuSettings.shared.enabled {
+            unregister(id: actionId.rawValue)
+            return
+        }
+
+        let combo: KeyCombination
+        let source: String
+        if let data = UserDefaults.standard.data(forKey: actionId.userDefaultsKey),
+           let decoded = try? JSONDecoder().decode(KeyCombination.self, from: data) {
+            combo = decoded
+            source = "UserDefaults"
+        } else if UserDefaults.standard.data(forKey: actionId.userDefaultsKey) != nil {
+            // 有数据但解码失败：配置损坏，记日志并回退默认
+            AppLog.shared.log("\(actionId.rawValue) 配置损坏，回退默认值", category: "HotKey", level: .warn)
+            guard let def = defaultCombination(for: actionId) else { return }
+            combo = def
+            source = "默认值（配置损坏）"
+        } else if let def = defaultCombination(for: actionId) {
+            combo = def
+            source = "默认值"
+        } else {
+            AppLog.shared.log("跳过 \(actionId.rawValue)（无组合）", category: "HotKey", level: .warn)
+            return
+        }
+
+        do {
+            AppLog.shared.log("准备注册 \(actionId.rawValue) combo=\(combo.displayName) 来源=\(source)", category: "HotKey")
+            try register(combo, id: actionId.rawValue) { [weak self] in
+                self?.handleHotKey(actionId: actionId)
+            }
+        } catch {
+            AppLog.shared.log("注册失败 \(actionId.rawValue): \(error.localizedDescription)", category: "HotKey", level: .error)
+        }
     }
 
     // MARK: - 默认值 & 配置读写
@@ -228,6 +276,8 @@ final class HotKeyManager {
         switch id {
         case .compressQuick:         return KeyCombination(keyCode: 8,  modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧C
         case .compressInteractive:   return KeyCombination(keyCode: 34, modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧I
+        case .videoQuick:            return KeyCombination(keyCode: 9,  modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧V
+        case .radialMenu:            return KeyCombination(keyCode: 15, modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧R
         case .datefolderInteractive: return KeyCombination(keyCode: 45, modifiers: UInt32(optionKey | shiftKey)) // ⌥⇧N
         case .quickRename:           return KeyCombination(keyCode: 15, modifiers: UInt32(cmdKey)) // ⌘R
         }

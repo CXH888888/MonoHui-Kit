@@ -80,7 +80,9 @@ struct ToolResolver {
         case .avif:
             proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/avifenc")
             let q = avifQuality(quality)
-            args = ["-s", "8", "--min", "0", "--max", "0", "-q", "\(q)", input, "-o", output]
+            // 不要加 --min 0 --max 0：这两个参数会把质量锁死在 100，
+            // 让「中/低」档完全失效（实测同一张图 q75 与 q100 体积差 10 倍以上）。
+            args = ["-s", "8", "-q", "\(q)", input, "-o", output]
 
         case .jxl:
             proc.executableURL = URL(fileURLWithPath: "\(toolsDir)/cjxl")

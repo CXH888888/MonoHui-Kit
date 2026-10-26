@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
-    case compress, format, datefolder, shelf, hotkey, settings, about
+    case compress, video, radial, format, datefolder, shelf, hotkey, settings, about
     var id: String { rawValue }
 }
 
@@ -38,6 +38,8 @@ struct MainSplitView: View {
                 Color.appleCanvas
                 switch selection {
                 case .compress: MainWindow()
+                case .video: VideoCompressView()
+                case .radial: RadialMenuSettingsView()
                 case .format: FormatConversionView()
                 case .datefolder: DateFolderView()
                 case .shelf: ShelfSettingsView()

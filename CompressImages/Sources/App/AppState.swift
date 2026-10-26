@@ -30,6 +30,17 @@ final class AppState {
         didSet { UserDefaults.standard.set(quickKeepOriginal, forKey: "quickKeepOriginal") }
     }
 
+    // 视频压缩参数
+    var videoQuality: VideoQuality = .balanced {
+        didSet { UserDefaults.standard.set(videoQuality.rawValue, forKey: "videoQuality") }
+    }
+    var videoResolution: VideoResolution = .original {
+        didSet { UserDefaults.standard.set(videoResolution.rawValue, forKey: "videoResolution") }
+    }
+    var videoCodec: VideoCodec = .h264 {
+        didSet { UserDefaults.standard.set(videoCodec.rawValue, forKey: "videoCodec") }
+    }
+
     // 全局快捷键开关。启用后 App 驻留菜单栏，监听全局热键。
     var hotKeyEnabled: Bool = false {
         didSet {
@@ -45,7 +56,10 @@ final class AppState {
             "keepOriginalFormat": true,
             "quickQuality": QualityLevel.high.rawValue,
             "quickFormat": CompressionFormat.jpeg.rawValue,
-            "quickKeepOriginal": true
+            "quickKeepOriginal": true,
+            "videoQuality": VideoQuality.balanced.rawValue,
+            "videoResolution": VideoResolution.original.rawValue,
+            "videoCodec": VideoCodec.h264.rawValue
         ])
         if let raw = UserDefaults.standard.string(forKey: "format"),
            let fmt = CompressionFormat(rawValue: raw) {
@@ -67,6 +81,13 @@ final class AppState {
         }
         quickKeepOriginal = UserDefaults.standard.object(forKey: "quickKeepOriginal") as? Bool ?? true
 
+        if let raw = UserDefaults.standard.string(forKey: "videoQuality"),
+           let value = VideoQuality(rawValue: raw) { videoQuality = value }
+        if let raw = UserDefaults.standard.string(forKey: "videoResolution"),
+           let value = VideoResolution(rawValue: raw) { videoResolution = value }
+        if let raw = UserDefaults.standard.string(forKey: "videoCodec"),
+           let value = VideoCodec(rawValue: raw) { videoCodec = value }
+
         // 注意：hotKeyEnabled 在 AppDelegate.applicationDidFinishLaunching 中按需启用，
         // 不在 init 里启用——避免服务菜单触发（即用即走）时也意外驻留。
         hotKeyEnabled = UserDefaults.standard.object(forKey: "hotkey_enabled") as? Bool ?? false
@@ -82,12 +103,9 @@ final class AppState {
     func applyHotKeyEnabled() {
         AppLog.shared.log("applyHotKeyEnabled hotKeyEnabled=\(hotKeyEnabled) module=\(module)", category: "App")
         if hotKeyEnabled {
-            // 启用 Finder 激活/失活监听：Finder 激活时注册热键，其他 App 激活时注销
+            // 启用 Finder 激活/失活监听：Finder 激活时注册全部热键，其他 App 激活时只保留全局热键
             HotKeyManager.shared.installFinderWatcher()
-            // 如果当前 Finder 已在前台，立即注册（installFinderWatcher 内部也会判断）
-            if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" {
-                HotKeyManager.shared.registerAllFromSettings()
-            }
+            HotKeyManager.shared.refreshForFrontmostApp()
             StatusBarController.shared.show()
         } else {
             HotKeyManager.shared.unregisterAll()
@@ -198,7 +216,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task {
                 await AppNotification.requestAuthorization()
                 await HotKeyDispatcher.shared.runQuickCompress(urls: urls)
+                await Self.waitForResultWindowIfNeeded()
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await MainActor.run { NSApp.terminate(nil) }
+            }
+        } else if module == "video" && moduleArgs["mode"] == "quick" {
+            NSApp.setActivationPolicy(.prohibited)
+            Task {
+                await AppNotification.requestAuthorization()
+                await HotKeyDispatcher.shared.runQuickVideoCompress(urls: urls)
+                await Self.waitForResultWindowIfNeeded()
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await MainActor.run { NSApp.terminate(nil) }
+            }
+        } else if module == "radial" && moduleArgs["mode"] == "preview" {
+            // 调试/演示入口：在光标处展示圆环 3 秒后退出，不执行任何动作
+            NSApp.setActivationPolicy(.prohibited)
+            Task {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                await MainActor.run { RadialMenuController.shared.preview() }
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
                 await MainActor.run { NSApp.terminate(nil) }
             }
         } else if module == "datefolder" && moduleArgs["mode"] == "interactive" {
@@ -310,7 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 处理服务菜单转发来的请求（主进程收到后调 HotKeyDispatcher）
+    /// 服务菜单转发来的请求（主进程收到后调 HotKeyDispatcher）
     private func handleServiceBridgeRequest(module: String, args: [String: String], urls: [URL]) {
         AppLog.shared.log("处理转发请求 module=\(module) args=\(args) urls=\(urls.count)", category: "Service")
         let actionId: HotKeyActionId
@@ -319,6 +356,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             actionId = .compressQuick
         case ("compress", "interactive"):
             actionId = .compressInteractive
+        case ("video", "quick"):
+            actionId = .videoQuick
         case ("datefolder", "interactive"):
             actionId = .datefolderInteractive
         case ("quickrename", "interactive"):
@@ -335,13 +374,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             // 对于 compressQuick，HotKeyDispatcher 会再读 FinderSelection，可能读不到（因为 Finder 不在前台）
             // 所以直接调用内部逻辑
-            if actionId == .compressQuick {
+            switch actionId {
+            case .compressQuick:
                 HotKeyDispatcher.shared.dispatchQuickWithUrls(urls: urls)
-            } else {
+            case .videoQuick:
+                HotKeyDispatcher.shared.dispatchVideoQuickWithUrls(urls: urls)
+            default:
                 // compressInteractive / datefolderInteractive：直接弹窗，用转发来的 urls
                 HotKeyDispatcher.shared.dispatchInteractiveWithUrls(urls: urls, actionId: actionId)
             }
         }
+    }
+
+    /// 服务菜单即用即走模式下，若压缩失败弹出了结果窗口，先等用户看完再退出进程
+    private static func waitForResultWindowIfNeeded() async {
+        let showing = await MainActor.run { CompressionResultWindowController.shared.isShowing }
+        guard showing else { return }
+        await MainActor.run {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        while true {
+            let stillShowing = await MainActor.run {
+                CompressionResultWindowController.shared.isShowing
+            }
+            if !stillShowing { break }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+    }
+
+    /// 打开主窗口并切到指定功能页（圆环菜单等外部入口使用）
+    func openModule(_ item: SidebarItem, urls: [URL] = []) {
+        appState.preloadedURLs = urls
+        appState.module = ""
+        appState.moduleArgs = [:]
+        appState.pendingSidebarItem = item
+        showMainWindow()
     }
 
     /// 点击 Dock 图标 / 启动台重新打开 App 时：确保主窗口出现。

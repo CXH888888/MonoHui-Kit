@@ -14,3 +14,6 @@ CompressImages/Sources/App/Resources/lib/
 
 # Build number
 .build_number
+
+# WorkBuddy AI 工作区记忆
+.workbuddy-ai/

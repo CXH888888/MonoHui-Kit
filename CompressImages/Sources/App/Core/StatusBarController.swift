@@ -32,9 +32,11 @@ final class StatusBarController {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        // 四个主功能：点击直接跳转主界面对应页面
+        // 主功能：点击直接跳转主界面对应页面
         let entries: [(title: String, icon: String, item: SidebarItem)] = [
             ("图片压缩", "photo", .compress),
+            ("视频压缩", "film", .video),
+            ("圆环菜单", "circle.dashed", .radial),
             ("格式转化", "arrow.triangle.2.circlepath", .format),
             ("文件命名扩展", "folder", .datefolder),
             ("文件暂存箱", "tray", .shelf),

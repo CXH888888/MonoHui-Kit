@@ -29,6 +29,10 @@ final class AppLog {
     private(set) var entries: [Entry] = []
     private let maxEntries = 100
     private let lock = NSLock()
+    /// 受 lock 保护的真实缓冲。并发压缩时多个任务同时写日志，
+    /// 直接读写 entries（@Observable 属性）会与主线程刷新产生数据竞争。
+    private var storage: [Entry] = []
+    private let fileQueue = DispatchQueue(label: "com.quickactions.applog.file")
     private let logFileURL: URL
     private let maxFileSize: Int = 3_000_000 // 3MB
 
@@ -60,6 +64,7 @@ final class AppLog {
         if loaded.count > maxEntries {
             loaded.removeFirst(loaded.count - maxEntries)
         }
+        self.storage = loaded
         self.entries = loaded
     }
 
@@ -105,20 +110,27 @@ final class AppLog {
     func log(_ message: String, category: String = "App", level: Entry.Level = .info) {
         let entry = Entry(timestamp: Date(), category: category, level: level, message: message)
         lock.lock()
-        var newEntries = entries
-        newEntries.append(entry)
-        if newEntries.count > maxEntries {
-            newEntries.removeFirst(newEntries.count - maxEntries)
+        storage.append(entry)
+        if storage.count > maxEntries {
+            storage.removeFirst(storage.count - maxEntries)
         }
+        let snapshot = storage
         lock.unlock()
         DispatchQueue.main.async { [weak self] in
-            self?.entries = newEntries
+            self?.entries = snapshot
         }
         NSLog("[\(category)] \(level.rawValue) \(message)")
         appendToFile(entry: entry)
     }
 
     private func appendToFile(entry: Entry) {
+        // 串行队列保证多线程批量压缩时不会交错写入同一文件
+        fileQueue.async { [weak self] in
+            self?.writeToFile(entry: entry)
+        }
+    }
+
+    private func writeToFile(entry: Entry) {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         let line = "[\(formatter.string(from: entry.timestamp))] [\(entry.category)] \(entry.level.rawValue) \(entry.message)\n"
@@ -152,6 +164,9 @@ final class AppLog {
     }
 
     func clear() {
+        lock.lock()
+        storage = []
+        lock.unlock()
         entries = []
         try? Data().write(to: logFileURL)
     }
