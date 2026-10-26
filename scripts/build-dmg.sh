@@ -68,8 +68,9 @@ ln -s /Applications "$MOUNT_DIR/Applications"
 #   - app 在左侧 (120, 160)
 #   - Applications 在右侧 (400, 160)
 #   - 窗口大小 660×400，图标大小 96px
+# 无「自动化」权限时 Finder 会返回 -10004；此时退回默认布局，不影响 dmg 可用性
 echo "   设置 Finder 布局..."
-osascript <<APPLESCRIPT >/dev/null
+if osascript <<APPLESCRIPT >/dev/null 2>&1
 tell application "Finder"
     activate
     set theDisk to disk "$VOLNAME"
@@ -87,6 +88,11 @@ tell application "Finder"
     close theWindow
 end tell
 APPLESCRIPT
+then
+    echo "   ✅ 布局已设置"
+else
+    echo "   ⚠️  Finder 自动化权限不可用，跳过图标布局（dmg 功能不受影响）"
+fi
 
 # 步骤 5：卸载（用 device 强制 eject，避免挂载点残留导致资源忙）
 hdiutil detach "$DEV" -force >/dev/null 2>&1 || hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1
