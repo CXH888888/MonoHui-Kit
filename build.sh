@@ -153,6 +153,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <true/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>需要读取 Finder 中选中的文件，用于图片压缩、视频压缩、重命名、新建日期文件夹与暂存等操作。</string>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
@@ -177,6 +179,15 @@ if [ -f "$PROJECT/Sources/App/Resources/AppIcon.icns" ]; then
   cp "$PROJECT/Sources/App/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
 
+# GitHub PAT：私有仓库的应用内更新需要授权（建议只读细粒度 token，仅 Contents: Read）
+# 存放在 ~/.monohui-kit/github-token，构建时打进 Bundle 资源，App 用它调 GitHub API
+GH_TOKEN_FILE="$HOME/.monohui-kit/github-token"
+if [ -f "$GH_TOKEN_FILE" ]; then
+  cp "$GH_TOKEN_FILE" "$APP_BUNDLE/Contents/Resources/github-token"
+else
+  echo "   ℹ️  未找到 $GH_TOKEN_FILE，应用内「检查更新」在私有仓库上不可用"
+fi
+
 # Create PkgInfo
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
@@ -184,6 +195,22 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 echo ""
 echo "✍️  签名..."
 SIGNING_IDENTITY="QuickActions Local Signing"
+# Apple Events 权限（读取 Finder 选中项）在 Hardened Runtime 下必须有对应 entitlement
+# （MonoHuiKit.entitlements：com.apple.security.automation.apple-events），
+# 否则系统直接拒绝且不弹授权框，新机器上表现就是「一直提示未检测到选中文件」。
+# 注意 entitlements 文件本身不要加 XML 注释：plutil 与 AMFI 对注释位置都很挑剔。
+ENTITLEMENTS="$PROJECT/MonoHuiKit.entitlements"
+
+sign_app() {
+    local identity="$1"
+    if [ -f "$ENTITLEMENTS" ]; then
+        codesign --force --sign "$identity" --options runtime \
+            --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
+    else
+        echo "   ⚠️  未找到 $ENTITLEMENTS，Apple Events 可能被 Hardened Runtime 拒绝"
+        codesign --force --sign "$identity" --options runtime "$APP_BUNDLE"
+    fi
+}
 # 搜索证书指纹或名称 - 即使证书不被信任也能找到
 CERT_FINGERPRINT=$(security find-identity -p codesigning 2>/dev/null | grep -E "[0-9A-F]{40}" | grep "$SIGNING_IDENTITY" | awk '{print $2}')
 if [ -z "$CERT_FINGERPRINT" ]; then
@@ -193,11 +220,11 @@ if [ -z "$CERT_FINGERPRINT" ]; then
 fi
 if [ -n "$CERT_FINGERPRINT" ]; then
     echo "   使用本地证书: $SIGNING_IDENTITY"
-    codesign --force --sign "$CERT_FINGERPRINT" --options runtime "$APP_BUNDLE"
+    sign_app "$CERT_FINGERPRINT"
 else
     echo "   ⚠️  未找到本地签名证书，使用 ad-hoc 签名"
     echo "   建议运行 bash scripts/setup-signing-cert.sh 创建证书，避免更新后 TCC 权限失效"
-    codesign --force --sign - --options runtime "$APP_BUNDLE"
+    sign_app -
 fi
 
 # Step 6: Register the .app with Launch Services for "Open With" support.

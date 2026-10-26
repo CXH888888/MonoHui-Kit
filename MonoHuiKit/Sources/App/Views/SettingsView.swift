@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var installedActions: Set<String> = []
     @State private var operationInProgress = false
     @State private var hasAccessibilityPermission = false
+    @State private var hasAutomationPermission = false
     @State private var hasNotificationPermission = false
 
     var body: some View {
@@ -49,6 +50,13 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("权限")
             VStack(spacing: 0) {
+                permissionRow(
+                    name: "自动化（Finder）",
+                    description: "读取 Finder 选中文件——快捷键与圆环的必需权限",
+                    granted: hasAutomationPermission,
+                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+                )
+                divider
                 permissionRow(
                     name: "辅助功能",
                     description: "用于日期文件夹自动进入重命名模式",
@@ -211,6 +219,8 @@ struct SettingsView: View {
 
     private func refreshPermissions() {
         hasAccessibilityPermission = AXIsProcessTrusted()
+        // 会触发系统授权弹窗（首次），这正是想要的引导效果
+        hasAutomationPermission = AutomationPermission.canControlFinder()
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
                 hasNotificationPermission = settings.authorizationStatus == .authorized

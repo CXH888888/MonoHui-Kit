@@ -8,6 +8,23 @@
 
 ---
 
+## [v3.5.5] - 2026-10-26
+
+### 新增
+- 应用内自动更新：「关于与诊断 → 软件更新」检查 GitHub Releases 最新版本，发现新版后一键下载（带进度）→ 自动挂载 dmg → 覆盖安装 → 应用自动重启，全程无需手动操作
+- `UpdateService`：版本号按数字逐段比较（v3.10.0 > v3.9.9），下载与安装的关键节点写诊断日志
+- 构建时自动打包 `~/.monohui-kit/github-token` 到 Bundle 资源：私有仓库的 Release API 与附件下载需要 PAT，建议使用只读细粒度 token（仅 Contents: Read）；文件不存在时构建会提示但继续
+
+---
+
+## [v3.5.4] - 2026-10-26
+
+### 修复
+- 全新机器上「明明选中了文件却提示未检测到选中文件」：读取 Finder 选中项依赖 Apple Events，但打包存在两个硬伤——Info.plist 缺少 `NSAppleEventsUsageDescription`，且 Hardened Runtime 签名没有 `com.apple.security.automation.apple-events` entitlement，系统会直接拒绝且不弹授权框。已补齐：新增 `MonoHuiKit.entitlements`，`build.sh` 签名时统一携带
+- 设置页权限区新增「自动化（Finder）」一行：打开设置页即探测权限（首次会触发系统授权弹窗），未授权时一键跳转「隐私与安全性 → 自动化」
+
+---
+
 ## [v3.5.3] - 2026-10-26
 
 ### 变更
