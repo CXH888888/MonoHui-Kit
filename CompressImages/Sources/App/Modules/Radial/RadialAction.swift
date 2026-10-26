@@ -55,11 +55,17 @@ final class RadialMenuSettings {
     static let allowedCounts = [4, 6, 8]
     /// 面板边长（pt）：小 / 中 / 大
     static let allowedSizes = [280, 320, 360]
+    /// 扇区图标字号
+    static let allowedIconSizes = [14, 16, 19]
+    /// 中心标题字号
+    static let allowedTextSizes = [12, 13, 15]
     private static let enabledKey = "radial_enabled"
     private static let countKey = "radial_sector_count"
     private static let actionsKey = "radial_action_ids"
     private static let labelsKey = "radial_show_labels"
     private static let sizeKey = "radial_menu_size"
+    private static let iconSizeKey = "radial_icon_size"
+    private static let textSizeKey = "radial_text_size"
 
     var enabled: Bool {
         didSet { UserDefaults.standard.set(enabled, forKey: Self.enabledKey) }
@@ -92,6 +98,24 @@ final class RadialMenuSettings {
         }
     }
 
+    /// 扇区图标字号
+    var iconSize: Int {
+        didSet {
+            let clamped = Self.allowedIconSizes.contains(iconSize) ? iconSize : 14
+            if clamped != iconSize { iconSize = clamped; return }
+            UserDefaults.standard.set(iconSize, forKey: Self.iconSizeKey)
+        }
+    }
+
+    /// 中心标题字号；说明文字自动比它小 3pt
+    var textSize: Int {
+        didSet {
+            let clamped = Self.allowedTextSizes.contains(textSize) ? textSize : 12
+            if clamped != textSize { textSize = clamped; return }
+            UserDefaults.standard.set(textSize, forKey: Self.textSizeKey)
+        }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: [
@@ -99,7 +123,9 @@ final class RadialMenuSettings {
             Self.countKey: 8,
             Self.actionsKey: RadialActionCatalog.defaultActionIds,
             Self.labelsKey: false,
-            Self.sizeKey: 320
+            Self.sizeKey: 320,
+            Self.iconSizeKey: 14,
+            Self.textSizeKey: 12
         ])
         enabled = defaults.bool(forKey: Self.enabledKey)
         let count = defaults.integer(forKey: Self.countKey)
@@ -109,6 +135,10 @@ final class RadialMenuSettings {
         showLabels = defaults.bool(forKey: Self.labelsKey)
         let size = defaults.integer(forKey: Self.sizeKey)
         menuSize = Self.allowedSizes.contains(size) ? size : 320
+        let icon = defaults.integer(forKey: Self.iconSizeKey)
+        iconSize = Self.allowedIconSizes.contains(icon) ? icon : 14
+        let text = defaults.integer(forKey: Self.textSizeKey)
+        textSize = Self.allowedTextSizes.contains(text) ? text : 12
     }
 
     /// 补齐/裁剪到 8 个槽位，保证索引永远可用

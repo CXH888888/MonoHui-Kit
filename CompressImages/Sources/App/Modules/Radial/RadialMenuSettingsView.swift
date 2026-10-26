@@ -152,6 +152,50 @@ struct RadialMenuSettingsView: View {
 
                 SectionDivider()
 
+                HStack(spacing: 10) {
+                    Text("图标大小")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleInk)
+                        .frame(width: 64, alignment: .leading)
+                    ForEach(RadialMenuSettings.allowedIconSizes, id: \.self) { size in
+                        PillButton(
+                            label: presetLabel(size, in: RadialMenuSettings.allowedIconSizes),
+                            isSelected: settings.iconSize == size,
+                            action: { settings.iconSize = size }
+                        )
+                    }
+                    Spacer()
+                    Text("\(settings.iconSize) pt")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color.appleMuted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                SectionDivider()
+
+                HStack(spacing: 10) {
+                    Text("文字大小")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.appleInk)
+                        .frame(width: 64, alignment: .leading)
+                    ForEach(RadialMenuSettings.allowedTextSizes, id: \.self) { size in
+                        PillButton(
+                            label: presetLabel(size, in: RadialMenuSettings.allowedTextSizes),
+                            isSelected: settings.textSize == size,
+                            action: { settings.textSize = size }
+                        )
+                    }
+                    Spacer()
+                    Text("\(settings.textSize) pt")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color.appleMuted)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                SectionDivider()
+
                 HStack {
                     Text("扇区内显示文字")
                         .font(.system(size: 13))
@@ -172,11 +216,14 @@ struct RadialMenuSettingsView: View {
     }
 
     private func sizeLabel(_ size: Int) -> String {
-        switch size {
-        case 280: return "小"
-        case 360: return "大"
-        default:  return "中"
-        }
+        presetLabel(size, in: RadialMenuSettings.allowedSizes)
+    }
+
+    /// 按档位在数组中的位置映射成「小 / 中 / 大」
+    private func presetLabel(_ value: Int, in list: [Int]) -> String {
+        let labels = ["小", "中", "大"]
+        let index = list.firstIndex(of: value) ?? 1
+        return labels[min(index, labels.count - 1)]
     }
 
     // MARK: - 动作分配

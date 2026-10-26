@@ -48,6 +48,9 @@ struct RadialMenuView: View {
     var isPreview: Bool = false
 
     private var size: CGFloat { metrics.panelSize }
+    private var iconSize: CGFloat { CGFloat(RadialMenuSettings.shared.iconSize) }
+    private var titleSize: CGFloat { CGFloat(RadialMenuSettings.shared.textSize) }
+    private var hintSize: CGFloat { max(9, titleSize - 3) }
     private var iconRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 + size * 0.022 }
     private var labelRadius: CGFloat { (metrics.innerRadius + metrics.outerRadius) / 2 - size * 0.062 }
 
@@ -112,7 +115,7 @@ struct RadialMenuView: View {
 
         ZStack {
             Image(systemName: action.icon)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: iconSize, weight: .medium))
                 .foregroundStyle(isSelected ? Color.white : Color.appleSoft)
                 .scaleEffect(isSelected ? 1.12 : 1)
                 .position(
@@ -122,7 +125,7 @@ struct RadialMenuView: View {
 
             if RadialMenuSettings.shared.showLabels {
                 Text(action.displayName)
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: hintSize, weight: .regular))
                     .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Color.appleSoft.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -151,13 +154,13 @@ struct RadialMenuView: View {
 
             VStack(spacing: 3) {
                 Text(model.selectedAction?.displayName ?? (isPreview ? "圆环预览" : "移动选择"))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: titleSize, weight: .semibold))
                     .foregroundStyle(Color.appleInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
 
                 Text(model.selectedAction?.hint ?? (isPreview ? "\(model.actions.count) 个扇区" : "回到中心取消"))
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: hintSize, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
