@@ -128,8 +128,8 @@ struct QuickRenameBatchPopover: View {
     @AppStorage("datefolder_custom_channels_json") private var customChannelsJSON: String = "[]"
     @AppStorage("quickrename_custom_statuses_json") private var customStatusesJSON: String = "[]"
 
-    // 渠道编辑状态
-    @State private var channel: String = "线上"
+    // 渠道编辑状态（可多选，命名时用 - 连接）
+    @State private var channels: [String] = ["线上"]
     @State private var customChannel: String = ""
     @State private var isAddingChannel = false
     @State private var newChannelInput = ""
@@ -198,6 +198,31 @@ struct QuickRenameBatchPopover: View {
         guard let data = customChannelsJSON.data(using: .utf8),
               let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return arr
+    }
+
+    /// 选中渠道按 pill 固定顺序展开，"其他"替换成自定义文本
+    private var effectiveChannels: [String] {
+        let order = ["线上", "线下"] + customChannels + ["其他"]
+        return order.filter { channels.contains($0) }.compactMap { ch in
+            let value = ch == "其他" ? customChannel.trimmingCharacters(in: .whitespaces) : ch
+            return value.isEmpty ? nil : value
+        }
+    }
+
+    /// 写进 BatchFieldConfig.unifyValue 的渠道字符串
+    private var channelValue: String { effectiveChannels.joined(separator: "-") }
+
+    /// 把存下来的渠道字符串还原成多选状态（空串表示用户主动清空，保持空）
+    static func splitChannels(_ value: String) -> [String] {
+        value.isEmpty ? [] : value.split(separator: "-").map(String.init)
+    }
+
+    private func toggleChannel(_ ch: String) {
+        if let index = channels.firstIndex(of: ch) {
+            channels.remove(at: index)
+        } else {
+            channels.append(ch)
+        }
     }
 
     private var customStatuses: [String] {
@@ -410,7 +435,7 @@ struct QuickRenameBatchPopover: View {
                 fieldConfigs[versionConfigIdx].unifyValue = String(QuickRenameEngine.nextVersion(current: parsed.version))
             }
             // 渠道和状态用默认值
-            channel = "线上"
+            channels = ["线上"]
             status = "草稿"
             namePart = parsed.name
             versionNumber = QuickRenameEngine.nextVersion(current: parsed.version)
@@ -443,7 +468,7 @@ struct QuickRenameBatchPopover: View {
             case "date":
                 dateFormat = config.dateFormat
             case "channel":
-                channel = config.unifyValue
+                channels = Self.splitChannels(config.unifyValue)
             case "name":
                 namePart = config.unifyValue
             case "version":
@@ -464,7 +489,7 @@ struct QuickRenameBatchPopover: View {
             fieldConfigs[idx].dateFormat = dateFormat
             fieldConfigs[idx].unifyValue = dateFormat == "original" ? "" : QuickRenameEngine.formatName(format: dateFormat)
         case "channel":
-            fieldConfigs[idx].unifyValue = channel == "其他" ? customChannel : channel
+            fieldConfigs[idx].unifyValue = channelValue
         case "name":
             fieldConfigs[idx].unifyValue = namePart
         case "version":
@@ -525,7 +550,7 @@ struct QuickRenameBatchPopover: View {
         }
         if !saved.channel.isEmpty, let chIdx = fieldConfigs.firstIndex(where: { $0.key == "channel" }) {
             fieldConfigs[chIdx].unifyValue = saved.channel
-            channel = saved.channel
+            channels = Self.splitChannels(saved.channel)
         }
         if !saved.status.isEmpty, let stIdx = fieldConfigs.firstIndex(where: { $0.key == "status" }) {
             fieldConfigs[stIdx].unifyValue = saved.status
@@ -941,18 +966,18 @@ struct QuickRenameBatchPopover: View {
             spacing: 6
         ) {
             ForEach(["线上", "线下"], id: \.self) { ch in
-                batchGridPill(ch, isSelected: channel == ch) {
-                    channel = (channel == ch) ? "" : ch
+                batchGridPill(ch, isSelected: channels.contains(ch)) {
+                    toggleChannel(ch)
                 }
             }
             ForEach(customChannels, id: \.self) { ch in
                 batchCustomChannelPill(ch)
             }
-            if channel == "其他" {
+            if channels.contains("其他") {
                 batchChannelOtherInput
             } else {
                 batchGridPill("其他", isSelected: false) {
-                    channel = "其他"
+                    toggleChannel("其他")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         customChannelFocused = true
                     }
@@ -964,7 +989,7 @@ struct QuickRenameBatchPopover: View {
                 batchChannelAddButton
             }
         }
-        .onChange(of: channel) { _, _ in saveEditorState(for: "channel") }
+        .onChange(of: channels) { _, _ in saveEditorState(for: "channel") }
     }
 
     // 名字编辑器
@@ -1332,7 +1357,7 @@ struct QuickRenameBatchPopover: View {
         var list = customChannels
         let reserved = ["线上", "线下", "其他"]
         if list.contains(trimmed) || reserved.contains(trimmed) {
-            channel = trimmed
+            if !channels.contains(trimmed) { channels.append(trimmed) }
             return
         }
         list.append(trimmed)
@@ -1340,7 +1365,7 @@ struct QuickRenameBatchPopover: View {
            let str = String(data: data, encoding: .utf8) {
             customChannelsJSON = str
         }
-        channel = trimmed
+        if !channels.contains(trimmed) { channels.append(trimmed) }
     }
 
     /// 删除自定义渠道标签（与单文件改名一致）
@@ -1351,7 +1376,7 @@ struct QuickRenameBatchPopover: View {
            let str = String(data: data, encoding: .utf8) {
             customChannelsJSON = str
         }
-        if channel == ch { channel = "" }
+        channels.removeAll { $0 == ch }
         hoveringChannel = nil
     }
 
@@ -1376,7 +1401,7 @@ struct QuickRenameBatchPopover: View {
     // 自定义渠道标签：hover 时右上角出现删除按钮（参考单文件改名）
     @ViewBuilder
     private func batchCustomChannelPill(_ ch: String) -> some View {
-        let isSelected = channel == ch
+        let isSelected = channels.contains(ch)
         let isHovering = hoveringChannel == ch
         ZStack(alignment: .topTrailing) {
             // 圆角背景（独立，不裁剪任何前景内容）
@@ -1413,7 +1438,7 @@ struct QuickRenameBatchPopover: View {
         .frame(height: 28)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { channel = (channel == ch) ? "" : ch }
+        .onTapGesture { toggleChannel(ch) }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 hoveringChannel = hovering ? ch : nil
@@ -1446,7 +1471,7 @@ struct QuickRenameBatchPopover: View {
                 .stroke(Color.appleBlue, lineWidth: 1.5)
                 .overlay(alignment: .trailing) {
                     Button {
-                        channel = ""
+                        channels.removeAll { $0 == "其他" }
                         customChannelFocused = false
                     } label: {
                         Image(systemName: "xmark")
@@ -1652,7 +1677,7 @@ struct QuickRenameBatchPopover: View {
         ]
         overrides = files.map { _ in [:] }
         editingTag = nil
-        channel = "线上"
+        channels = ["线上"]
         status = "草稿"
         namePart = ""
         versionNumber = 1

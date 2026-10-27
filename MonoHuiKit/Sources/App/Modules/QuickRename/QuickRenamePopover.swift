@@ -136,7 +136,7 @@ struct QuickRenamePopover: View {
     @State private var originalDate: String = ""
 
     // 渠道 pill（默认线上）：线上/线下/其他
-    @State private var channel: String = "线上"
+    @State private var channels: [String] = ["线上"]
     // "其他"被选中时的自定义渠道文本
     @AppStorage("datefolder_interactive_custom_channel") private var customChannel: String = ""
     // 用户自定义渠道标签列表（与新建文件夹共享）
@@ -187,9 +187,23 @@ struct QuickRenamePopover: View {
         return dateFormat.isEmpty ? "" : QuickRenameEngine.formatName(format: dateFormat)
     }
 
-    private var effectiveChannel: String {
-        if channel.isEmpty { return "" }
-        return channel == "其他" ? customChannel : channel
+    /// 实际用于命名的渠道值：选"其他"时取 customChannel，其余取标签本身。
+    /// 顺序按 pill 的固定顺序，保证同一组合永远得到同一个名字。
+    private var effectiveChannels: [String] {
+        let order = ["线上", "线下"] + customChannels + ["其他"]
+        return order.filter { channels.contains($0) }.compactMap { ch in
+            let value = ch == "其他" ? customChannel.trimmingCharacters(in: .whitespaces) : ch
+            return value.isEmpty ? nil : value
+        }
+    }
+
+    /// 多选开关：已选则取消，未选则追加
+    private func toggleChannel(_ ch: String) {
+        if let index = channels.firstIndex(of: ch) {
+            channels.remove(at: index)
+        } else {
+            channels.append(ch)
+        }
     }
 
     // 自定义渠道列表
@@ -222,19 +236,19 @@ struct QuickRenamePopover: View {
         var list = customChannels
         let reserved = ["线上", "线下", "其他"]
         if list.contains(trimmed) || reserved.contains(trimmed) {
-            channel = trimmed
+            if !channels.contains(trimmed) { channels.append(trimmed) }
             return
         }
         list.append(trimmed)
         saveCustomChannels(list)
-        channel = trimmed
+        if !channels.contains(trimmed) { channels.append(trimmed) }
     }
 
     private func deleteChannel(_ ch: String) {
         var list = customChannels
         list.removeAll { $0 == ch }
         saveCustomChannels(list)
-        if channel == ch { channel = "" }
+        channels.removeAll { $0 == ch }
         hoveringChannel = nil
     }
 
@@ -315,7 +329,7 @@ struct QuickRenamePopover: View {
 
     private var finalName: String {
         QuickRenameEngine.buildName(
-            date: dateLabel, channel: effectiveChannel, name: namePart,
+            date: dateLabel, channel: effectiveChannels.joined(separator: "-"), name: namePart,
             version: versionNumber, versionEnabled: versionEnabled, status: status
         )
     }
@@ -385,11 +399,9 @@ struct QuickRenamePopover: View {
             originalDate = ""
         }
 
-        if !parsed.channel.isEmpty {
-            channel = parsed.channel
-        } else {
-            channel = "线上"
-        }
+        channels = parsed.channel.isEmpty
+            ? ["线上"]
+            : parsed.channel.split(separator: "-").map(String.init)
 
         namePart = parsed.name
         versionNumber = QuickRenameEngine.nextVersion(current: parsed.version)
@@ -428,7 +440,9 @@ struct QuickRenamePopover: View {
                     )
                     dateFormat = parsed.dateFormat.isEmpty ? "MMdd" : "original"
                     originalDate = parsed.date
-                    channel = parsed.channel.isEmpty ? "线上" : parsed.channel
+                    channels = parsed.channel.isEmpty
+                        ? ["线上"]
+                        : parsed.channel.split(separator: "-").map(String.init)
                     namePart = parsed.name
                     versionNumber = QuickRenameEngine.nextVersion(current: parsed.version)
                     versionEnabled = true
@@ -526,16 +540,14 @@ struct QuickRenamePopover: View {
                         ForEach(["线上", "线下"], id: \.self) { ch in
                             PillButton(
                                 label: ch,
-                                isSelected: channel == ch,
-                                action: {
-                                    channel = (channel == ch) ? "" : ch
-                                }
+                                isSelected: channels.contains(ch),
+                                action: { toggleChannel(ch) }
                             )
                         }
                         ForEach(customChannels, id: \.self) { ch in
                             customChannelPill(ch)
                         }
-                        if channel == "其他" {
+                        if channels.contains("其他") {
                             HStack(spacing: 4) {
                                 Image(systemName: "pencil")
                                     .font(.system(size: 10, weight: .regular))
@@ -559,7 +571,7 @@ struct QuickRenamePopover: View {
                             )
                             .overlay(alignment: .trailing) {
                                 Button {
-                                    channel = ""
+                                    channels.removeAll { $0 == "其他" }
                                     customChannelFocused = false
                                 } label: {
                                     Image(systemName: "xmark")
@@ -574,7 +586,7 @@ struct QuickRenamePopover: View {
                             .onAppear { customChannelFocused = true }
                         } else {
                             Button {
-                                channel = "其他"
+                                toggleChannel("其他")
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                     customChannelFocused = true
                                 }
@@ -689,7 +701,7 @@ struct QuickRenamePopover: View {
     // MARK: - customChannelPill
     @ViewBuilder
     private func customChannelPill(_ ch: String) -> some View {
-        let isSelected = channel == ch
+        let isSelected = channels.contains(ch)
         let isHovering = hoveringChannel == ch
         HStack(spacing: 4) {
             Text(ch)
@@ -726,7 +738,7 @@ struct QuickRenamePopover: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            channel = (channel == ch) ? "" : ch
+            toggleChannel(ch)
         }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {

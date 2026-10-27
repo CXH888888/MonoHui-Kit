@@ -25,6 +25,10 @@ struct SettingsView: View {
             refreshStatus()
             refreshPermissions()
         }
+        // 从系统设置授权回来时刷新状态，否则权限行会一直停在旧的「未授权」
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
     }
 
     // MARK: - 顶部条：标题
@@ -54,14 +58,14 @@ struct SettingsView: View {
                     name: "自动化（Finder）",
                     description: "读取 Finder 选中文件——快捷键与圆环的必需权限",
                     granted: hasAutomationPermission,
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+                    pane: .automation
                 )
                 divider
                 permissionRow(
                     name: "辅助功能",
                     description: "用于日期文件夹自动进入重命名模式",
                     granted: hasAccessibilityPermission,
-                    settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                    pane: .accessibility
                 )
                 divider
                 permissionRow(
@@ -81,7 +85,13 @@ struct SettingsView: View {
         }
     }
 
-    private func permissionRow(name: String, description: String, granted: Bool, settingsURL: String) -> some View {
+    private func permissionRow(
+        name: String,
+        description: String,
+        granted: Bool,
+        pane: PermissionPane? = nil,
+        settingsURL: String? = nil
+    ) -> some View {
         HStack(spacing: 12) {
             Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.system(size: 16))
@@ -97,7 +107,12 @@ struct SettingsView: View {
             }
             Spacer()
             Button("去设置") {
-                if let url = URL(string: settingsURL) {
+                if let pane {
+                    // 系统设置的授权列表不一定显示本 App，跟着弹一块可拖拽的助手卡片
+                    pane.openSettings()
+                    let check: (() -> Bool)? = pane == .accessibility ? { AXIsProcessTrusted() } : nil
+                    PermissionDragAssistant.shared.show(for: pane, grantedCheck: check)
+                } else if let settingsURL, let url = URL(string: settingsURL) {
                     NSWorkspace.shared.open(url)
                 }
             }

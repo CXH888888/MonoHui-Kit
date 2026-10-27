@@ -576,6 +576,12 @@ final class VideoTranscoder: @unchecked Sendable {
         }
         writer.startSession(atSourceTime: .zero)
 
+        let io = TranscodeIOContext(
+            reader: reader, writer: writer,
+            videoInput: videoInput, videoOutput: videoOutput,
+            audioInput: audioInput, audioOutput: audioOutput
+        )
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let group = DispatchGroup()
             let state = TranscodeState()
@@ -583,7 +589,10 @@ final class VideoTranscoder: @unchecked Sendable {
             let duration = duration
 
             group.enter()
-            videoInput.requestMediaDataWhenReady(on: queue) {
+            io.videoInput.requestMediaDataWhenReady(on: queue) {
+                // 在闭包内从 Sendable 上下文取引用，避免直接捕获非 Sendable 的 AV 对象
+                let videoInput = io.videoInput
+                let videoOutput = io.videoOutput
                 while videoInput.isReadyForMoreMediaData {
                     guard let sample = videoOutput.copyNextSampleBuffer() else {
                         videoInput.markAsFinished()
@@ -591,9 +600,9 @@ final class VideoTranscoder: @unchecked Sendable {
                         return
                     }
                     if !videoInput.append(sample) {
-                        state.fail(writer.error ?? VideoTranscodeError.writerFailed("追加视频帧失败"))
-                        reader.cancelReading()
-                        writer.cancelWriting()
+                        state.fail(io.writer.error ?? VideoTranscodeError.writerFailed("追加视频帧失败"))
+                        io.reader.cancelReading()
+                        io.writer.cancelWriting()
                         videoInput.markAsFinished()
                         group.leave()
                         return
@@ -605,9 +614,13 @@ final class VideoTranscoder: @unchecked Sendable {
                 }
             }
 
-            if let audioInput, let audioOutput {
+            if io.audioInput != nil, io.audioOutput != nil {
                 group.enter()
-                audioInput.requestMediaDataWhenReady(on: queue) {
+                io.audioInput?.requestMediaDataWhenReady(on: queue) {
+                    guard let audioInput = io.audioInput, let audioOutput = io.audioOutput else {
+                        group.leave()
+                        return
+                    }
                     while audioInput.isReadyForMoreMediaData {
                         guard let sample = audioOutput.copyNextSampleBuffer() else {
                             audioInput.markAsFinished()
@@ -615,9 +628,9 @@ final class VideoTranscoder: @unchecked Sendable {
                             return
                         }
                         if !audioInput.append(sample) {
-                            state.fail(writer.error ?? VideoTranscodeError.writerFailed("追加音频失败"))
-                            reader.cancelReading()
-                            writer.cancelWriting()
+                            state.fail(io.writer.error ?? VideoTranscodeError.writerFailed("追加音频失败"))
+                            io.reader.cancelReading()
+                            io.writer.cancelWriting()
                             audioInput.markAsFinished()
                             group.leave()
                             return
@@ -640,21 +653,44 @@ final class VideoTranscoder: @unchecked Sendable {
                     continuation.resume(throwing: error)
                     return
                 }
-                if reader.status == .failed {
+                if io.reader.status == .failed {
                     continuation.resume(throwing: VideoTranscodeError.readerFailed(
-                        reader.error?.localizedDescription ?? "读取中断"))
+                        io.reader.error?.localizedDescription ?? "读取中断"))
                     return
                 }
-                writer.finishWriting {
-                    if writer.status == .completed {
+                io.writer.finishWriting {
+                    if io.writer.status == .completed {
                         continuation.resume()
                     } else {
                         continuation.resume(throwing: VideoTranscodeError.writerFailed(
-                            writer.error?.localizedDescription ?? "写入未完成"))
+                            io.writer.error?.localizedDescription ?? "写入未完成"))
                     }
                 }
             }
         }
+    }
+}
+
+/// AVFoundation 的 reader / writer / input / output 都不是 Sendable，但这里的读写
+/// 全部发生在同一条串行 queue 上。用一个 @unchecked Sendable 的上下文统一持有，
+/// 避免在每个 @Sendable 闭包里逐个捕获非 Sendable 对象。
+private final class TranscodeIOContext: @unchecked Sendable {
+    let reader: AVAssetReader
+    let writer: AVAssetWriter
+    let videoInput: AVAssetWriterInput
+    let videoOutput: AVAssetReaderTrackOutput
+    let audioInput: AVAssetWriterInput?
+    let audioOutput: AVAssetReaderTrackOutput?
+
+    init(reader: AVAssetReader, writer: AVAssetWriter,
+         videoInput: AVAssetWriterInput, videoOutput: AVAssetReaderTrackOutput,
+         audioInput: AVAssetWriterInput?, audioOutput: AVAssetReaderTrackOutput?) {
+        self.reader = reader
+        self.writer = writer
+        self.videoInput = videoInput
+        self.videoOutput = videoOutput
+        self.audioInput = audioInput
+        self.audioOutput = audioOutput
     }
 }
 

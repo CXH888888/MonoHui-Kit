@@ -210,7 +210,9 @@ private struct GitHubRelease: Decodable {
 }
 
 private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-    let onProgress: @Sendable (Double) -> Void
+    // 进度回调本身只做一次主线程跳转，由调用方保证线程安全；
+    // 标成 @Sendable 反而要求调用方传入 Sendable 闭包，与 [weak self] 冲突。
+    let onProgress: (Double) -> Void
 
     init(onProgress: @escaping (Double) -> Void) {
         self.onProgress = onProgress

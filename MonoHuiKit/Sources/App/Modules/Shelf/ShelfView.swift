@@ -180,7 +180,7 @@ struct ShelfView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: showClearConfirm)
         // 重命名弹窗：独立 NSPanel，贴在暂存箱右侧外部显示（不用 overlay，避免被窗口裁剪）
-        .onChange(of: showRename) { newValue in
+        .onChange(of: showRename) { _, newValue in
             handleRenameChange(newValue)
         }
         .onAppear {

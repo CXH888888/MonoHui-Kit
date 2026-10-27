@@ -79,7 +79,7 @@ struct ShelfSettingsView: View {
                     Toggle("", isOn: $shelfEnabled)
                         .toggleStyle(.switch)
                         .labelsHidden()
-                        .onChange(of: shelfEnabled) { _ in
+                        .onChange(of: shelfEnabled) {
                             applyShelfEnabled()
                         }
                 }
@@ -150,7 +150,7 @@ struct ShelfSettingsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .onChange(of: panelHeight) { _ in
+                .onChange(of: panelHeight) {
                     ShelfPanelController.shared.refreshPanel()
                 }
 
@@ -179,7 +179,7 @@ struct ShelfSettingsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .onChange(of: panelWidth) { _ in
+                .onChange(of: panelWidth) {
                     ShelfPanelController.shared.refreshPanel()
                 }
             }

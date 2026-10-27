@@ -413,9 +413,9 @@ final class ShelfStore {
 
         // 文件保留 cacheDir/ 原位，延迟 120s 后把孤儿移到 .history/
         // 120s 给 AI/PS 等目标应用充足读取/嵌入时间（AI 嵌入大图可能要几十秒）
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 120.0) { [weak self] in
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 120.0) {
             Task { @MainActor in
-                self?.cleanupExcessCache(keepCount: 5)
+                ShelfStore.shared.cleanupExcessCache(keepCount: 5)
             }
         }
 

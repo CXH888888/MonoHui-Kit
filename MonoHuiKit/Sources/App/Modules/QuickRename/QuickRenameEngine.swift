@@ -27,7 +27,7 @@ struct QuickRenameEngine {
     struct ParsedFileName {
         var date: String        // 日期段（如 "260806"），未识别为空
         var dateFormat: String  // 匹配到的日期格式（"yyMMdd"/"MMdd"/"yyMM"），未识别为空
-        var channel: String     // 渠道段，未识别为空
+        var channel: String     // 渠道段（多选用 - 连接，如 "线上-门店"），未识别为空
         var name: String        // 名字段（必填，未识别则用整个去扩展名文件名）
         var version: Int?       // 版本号数字，未识别为 nil
         var status: String      // 状态段，未识别为空
@@ -62,14 +62,17 @@ struct QuickRenameEngine {
             date = segments[0]
             dateFormat = detected
             startIndex = 1
-            // 第 2 段渠道
-            if segments.count > 1 {
-                let ch = segments[1]
-                if ch == "线上" || ch == "线下" || customChannels.contains(ch) {
-                    channel = ch
-                    startIndex = 2
-                }
+            // 渠道段：从第 2 段起，连续命中白名单的段都算渠道（多选用 - 连接）
+            var channelParts: [String] = []
+            while startIndex < segments.count {
+                let ch = segments[startIndex]
+                guard isChannelSegment(ch, customChannels: customChannels) else { break }
+                // 至少给名字留一段；第一段渠道除外，兼容「1027-线上」这种没有名字的老格式
+                if !channelParts.isEmpty && startIndex == segments.count - 1 { break }
+                channelParts.append(ch)
+                startIndex += 1
             }
+            channel = channelParts.joined(separator: "-")
         }
 
         // 剩余段
@@ -128,6 +131,12 @@ struct QuickRenameEngine {
     /// 识别到版本号则 +1，无则返回 1
     static func nextVersion(current: Int?) -> Int {
         (current ?? 0) + 1
+    }
+
+    // MARK: - 渠道段识别
+    /// 单个片段是否属于渠道白名单（内置两个 + 用户自定义标签）
+    private static func isChannelSegment(_ segment: String, customChannels: [String]) -> Bool {
+        segment == "线上" || segment == "线下" || customChannels.contains(segment)
     }
 
     // MARK: - 日期格式识别

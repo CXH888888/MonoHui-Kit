@@ -6,8 +6,9 @@ struct DateFolderPopover: View {
     // 日期格式 pill（默认月日，空字符串 = 未选中）
     @State private var dateFormat: String = "MMdd"
 
-    // 渠道 pill（默认线上，空字符串 = 未选中）：线上/线下/其他
-    @State private var channel: String = "线上"
+    // 渠道 pill（默认线上，可多选，空数组 = 未选中）
+    // 门店/规范 这类「品种」和线上/线下 平级，靠多选表达「门店 + 线上物料」
+    @State private var channels: [String] = ["线上"]
     // "其他"被选中时，用户自定义的渠道文本（持久化，切回"其他"时保留）
     @AppStorage("datefolder_interactive_custom_channel") private var customChannel: String = ""
 
@@ -57,15 +58,28 @@ struct DateFolderPopover: View {
         ("年月", "yyMM"),
         ("年月日", "yyMMdd")
     ]
-    private let channels = ["线上", "线下", "其他"]
 
     private var dateLabel: String {
         dateFormat.isEmpty ? "" : DateFolderEngine.formatName(format: dateFormat, prefix: "", suffix: "")
     }
-    /// 实际用于命名的渠道值：选"其他"时取 customChannel，否则取 channel
-    private var effectiveChannel: String {
-        if channel.isEmpty { return "" }
-        return channel == "其他" ? customChannel : channel
+    /// 实际用于命名的渠道值：选"其他"时取 customChannel，其余取标签本身。
+    /// 顺序按 pill 的固定顺序（线上 / 线下 / 自定义 / 其他）而不是点击先后，
+    /// 这样「先点门店再点线上」和反过来得到的名字完全一致。
+    private var effectiveChannels: [String] {
+        let order = ["线上", "线下"] + customChannels + ["其他"]
+        return order.filter { channels.contains($0) }.compactMap { ch in
+            let value = ch == "其他" ? customChannel.trimmingCharacters(in: .whitespaces) : ch
+            return value.isEmpty ? nil : value
+        }
+    }
+
+    /// 多选开关：已选则取消，未选则追加（追加到末尾，渲染顺序仍由 effectiveChannels 决定）
+    private func toggleChannel(_ ch: String) {
+        if let index = channels.firstIndex(of: ch) {
+            channels.remove(at: index)
+        } else {
+            channels.append(ch)
+        }
     }
 
     // 渠道行渐变：已向右滚（离开最左）→ 左侧渐变；右侧还有内容 → 右侧渐变
@@ -99,27 +113,28 @@ struct DateFolderPopover: View {
         var list = customChannels
         let reserved = ["线上", "线下", "其他"]
         if list.contains(trimmed) || reserved.contains(trimmed) {
-            // 已存在则仅选中
-            channel = trimmed
+            // 已存在则仅加入选中，不重复添加
+            if !channels.contains(trimmed) { channels.append(trimmed) }
             return
         }
         list.append(trimmed)
         saveCustomChannels(list)
-        channel = trimmed  // 自动选中新标签
+        if !channels.contains(trimmed) { channels.append(trimmed) }  // 自动选中新标签
     }
 
     private func deleteChannel(_ ch: String) {
         var list = customChannels
         list.removeAll { $0 == ch }
         saveCustomChannels(list)
-        if channel == ch {
-            channel = ""
-        }
+        channels.removeAll { $0 == ch }
         hoveringChannel = nil
     }
-    /// 最终文件夹名：用 - 拼接所有非空部分（日期 / 渠道 / 项目名称）
+    /// 预览用的渠道文本（多选用 - 连接）
+    private var channelText: String { effectiveChannels.joined(separator: "-") }
+
+    /// 最终文件夹名：日期 / 各个渠道 / 项目名称 都用 - 拼接
     private var finalName: String {
-        [dateLabel, effectiveChannel, namePart]
+        ([dateLabel] + effectiveChannels + [namePart])
             .filter { !$0.isEmpty }
             .joined(separator: "-")
     }
@@ -170,7 +185,7 @@ struct DateFolderPopover: View {
             // 清空按钮：清除日期/渠道选中 + 名称输入 + 新增标签输入态
             Button {
                 dateFormat = ""
-                channel = ""
+                channels.removeAll()
                 namePart = ""
                 customChannelFocused = false
                 isAddingChannel = false
@@ -220,10 +235,8 @@ struct DateFolderPopover: View {
                         ForEach(["线上", "线下"], id: \.self) { ch in
                             PillButton(
                                 label: ch,
-                                isSelected: channel == ch,
-                                action: {
-                                    channel = (channel == ch) ? "" : ch
-                                }
+                                isSelected: channels.contains(ch),
+                                action: { toggleChannel(ch) }
                             )
                         }
                         // 用户自定义渠道（排在"其他"之前，再点一次取消选中）
@@ -232,7 +245,7 @@ struct DateFolderPopover: View {
                         }
                         // "其他" pill：未选中时是普通 pill，
                         // 选中时变成内联输入框（灰底蓝描边，右侧 × 按钮可退出"其他"）
-                        if channel == "其他" {
+                        if channels.contains("其他") {
                             HStack(spacing: 4) {
                                 Image(systemName: "pencil")
                                     .font(.system(size: 10, weight: .regular))
@@ -259,7 +272,7 @@ struct DateFolderPopover: View {
                             .overlay(alignment: .trailing) {
                                 // × 退出"其他"：Image + frame(28,28) + contentShape 保证整个区域可点击
                                 Button {
-                                    channel = ""
+                                    channels.removeAll { $0 == "其他" }
                                     customChannelFocused = false
                                 } label: {
                                     Image(systemName: "xmark")
@@ -275,7 +288,7 @@ struct DateFolderPopover: View {
                         } else {
                             // "其他"未选中：比固定标签稍微暗一些的灰底色块（无描边），表示可输入入口
                             Button {
-                                channel = "其他"
+                                toggleChannel("其他")
                                 // 切换后等 TextField 渲染完成再聚焦
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                     customChannelFocused = true
@@ -395,7 +408,7 @@ struct DateFolderPopover: View {
     /// 用户自定义渠道 pill：点击切换选中（再点一次取消），hover 时右上角浮出小红删除按钮
     @ViewBuilder
     private func customChannelPill(_ ch: String) -> some View {
-        let isSelected = channel == ch
+        let isSelected = channels.contains(ch)
         let isHovering = hoveringChannel == ch
         HStack(spacing: 4) {
             Text(ch)
@@ -432,7 +445,7 @@ struct DateFolderPopover: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            channel = (channel == ch) ? "" : ch
+            toggleChannel(ch)
         }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -457,16 +470,19 @@ struct DateFolderPopover: View {
                     .background(Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                // 渠道标签（只读，未选渠道时显示占位）
-                Text(effectiveChannel.isEmpty ? "渠道" : effectiveChannel)
+                // 渠道标签（只读，未选渠道时显示占位）：宽度按内容自适应，
+                // 渠道越多标签越宽、后面输入框越窄；文本过长时中间截断
+                Text(channelText.isEmpty ? "渠道" : channelText)
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(effectiveChannel.isEmpty ? Color.appleSoft : Color.appleInk)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(channelText.isEmpty ? Color.appleSoft : Color.appleInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                // 名称输入框
+                // 名称输入框：吃掉剩余宽度；渠道标签过长时保底 120pt，不让输入框被挤没
                 TextField("输入项目名称", text: $namePart)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .regular))
@@ -475,6 +491,7 @@ struct DateFolderPopover: View {
                     .padding(.vertical, 7)
                     .background(Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .frame(minWidth: 120)
                     .onSubmit {
                         // TextField 聚焦时按回车触发创建
                         // 注意：Button 的 .keyboardShortcut(.return) 可能同时触发，
@@ -549,13 +566,12 @@ struct DateFolderPopover: View {
 
         Task {
             do {
-                let createdURL: URL
                 if let dir = directory {
-                    createdURL = try DateFolderEngine.runInteractiveInDirectory(
+                    _ = try DateFolderEngine.runInteractiveInDirectory(
                         directory: dir, urls: urls, name: name, moveSelectedFiles: shouldMove
                     )
                 } else {
-                    createdURL = try DateFolderEngine.runInteractive(
+                    _ = try DateFolderEngine.runInteractive(
                         urls: urls, name: name, moveSelectedFiles: shouldMove
                     )
                 }

@@ -211,7 +211,6 @@ final class ShelfPanelController {
         let screenFrame = screen.visibleFrame
         // 高度限制不超过屏幕高度的 90%
         let height = min(currentPanelHeight, screenFrame.height * 0.9)
-        let y = (screenFrame.height - height) / 2 + screenFrame.origin.y
         // 关键：初始 frame 直接设置为隐藏位置（屏幕外），避免先显示在可见位置再移走导致闪烁
         // 根据屏幕位置决定滑出方向，避免跨屏穿过
         let rect = calcHiddenFrame(for: screen, height: height)
@@ -347,7 +346,6 @@ final class ShelfPanelController {
         let screenFrame = screen.visibleFrame
         // 始终使用 currentPanelHeight 计算高度，避免 frame.height 为 0 时面板被压缩
         let height = min(currentPanelHeight, screenFrame.height * 0.9)
-        let y = (screenFrame.height - height) / 2 + screenFrame.origin.y
         // 完全移到屏幕外（不留边缘条），根据屏幕位置决定滑出方向
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
 
@@ -428,7 +426,6 @@ final class ShelfPanelController {
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
         panel.clipScreen = screen
-        let screenFrame = screen.visibleFrame
         // 用主面板实际 frame 高度，确保横条高度与面板完全一致
         let height = panel.frame.height
         let y = panel.frame.origin.y
@@ -540,7 +537,6 @@ final class ShelfPanelController {
 
         let screen = currentScreen ?? NSScreen.main ?? mainScreen()
         panel.clipScreen = screen
-        let screenFrame = screen.visibleFrame
         // 用主面板实际高度和位置
         let height = panel.frame.height
         let y = panel.frame.origin.y
@@ -853,7 +849,7 @@ final class ShelfPanelController {
                 panel.animator().setFrame(oldHiddenFrame, display: true)
             }, completionHandler: { [weak self] in
                 DispatchQueue.main.async {
-                    guard let self = self else { return }
+                    guard self != nil else { return }
                     // Phase 2：orderOut 隐藏，切换 clipScreen 到新屏，无动画定位到新屏隐藏位置
                     panel.orderOut(nil)
                     panel.alphaValue = 1
