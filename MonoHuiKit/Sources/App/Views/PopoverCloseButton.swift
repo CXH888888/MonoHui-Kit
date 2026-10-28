@@ -4,11 +4,11 @@ import AppKit
 /// 弹窗右上角的关闭按钮。
 ///
 /// 弹窗改成无边框后没有系统红灯了，靠这个 + Esc 取消。
-/// 视觉 20×20，命中区域 24×24（含 hover 判定），比图标本身大一圈更好点。
+/// 视觉 20×20，命中 / hover 判定 30×30（比图标大一圈，不用瞄准）。
 struct PopoverCloseButton: View {
     @State private var hovering = false
 
-    private let hitSize: CGFloat = 24
+    private let hitSize: CGFloat = 30
 
     var body: some View {
         Button {

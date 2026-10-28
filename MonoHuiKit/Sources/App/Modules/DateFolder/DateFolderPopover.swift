@@ -182,7 +182,6 @@ struct DateFolderPopover: View {
             Text("新建文件夹")
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Color.appleInk)
-            Spacer()
             // 清空按钮：清除日期/渠道选中 + 名称输入 + 新增标签输入态
             Button {
                 dateFormat = ""
@@ -201,6 +200,7 @@ struct DateFolderPopover: View {
             }
             .buttonStyle(.plain)
             .help("清空所有选中与输入")
+            Spacer()
             PopoverCloseButton()
         }
     }

@@ -431,7 +431,6 @@ struct QuickRenamePopover: View {
             Text("快速改名")
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Color.appleInk)
-            Spacer()
             Button {
                 // 清空：恢复到 onAppear 时的解析默认值
                 if let url = targetURL {
@@ -469,6 +468,7 @@ struct QuickRenamePopover: View {
             }
             .buttonStyle(.plain)
             .help("重置为解析默认值")
+            Spacer()
             PopoverCloseButton()
         }
     }

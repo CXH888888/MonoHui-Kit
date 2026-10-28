@@ -572,7 +572,6 @@ struct QuickRenameBatchPopover: View {
             Text("批量重命名")
                 .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(Color.appleInk)
-            Spacer()
             Button {
                 resetAll()
             } label: {
@@ -583,6 +582,7 @@ struct QuickRenameBatchPopover: View {
             }
             .buttonStyle(.plain)
             .help("重置")
+            Spacer()
             PopoverCloseButton()
         }
     }
