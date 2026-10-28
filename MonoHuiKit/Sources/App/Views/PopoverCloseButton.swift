@@ -4,9 +4,11 @@ import AppKit
 /// 弹窗右上角的关闭按钮。
 ///
 /// 弹窗改成无边框后没有系统红灯了，靠这个 + Esc 取消。
-/// 样式跟标题行里的「重置」按钮同尺寸（20×20），悬停时才出底色，不抢标题的注意力。
+/// 视觉 20×20，命中区域 24×24（含 hover 判定），比图标本身大一圈更好点。
 struct PopoverCloseButton: View {
     @State private var hovering = false
+
+    private let hitSize: CGFloat = 24
 
     var body: some View {
         Button {
@@ -19,7 +21,8 @@ struct PopoverCloseButton: View {
                 .background(
                     Circle().fill(hovering ? Color.appleSurface3 : Color.clear)
                 )
-                .contentShape(Circle())
+                .frame(width: hitSize, height: hitSize)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

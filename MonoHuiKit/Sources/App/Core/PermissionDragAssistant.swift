@@ -204,9 +204,12 @@ final class PermissionDragAssistant {
         hasSeenSettingsWindow = true
         missingSamples = 0
 
+        // 用固定高度，不要读 panel.frame.height：
+        // 给 contentViewController 赋值时 AppKit 会按 SwiftUI 视图的首帧尺寸重设窗口，
+        // 那一刻高度可能是 0，于是算出来的 target 高度也是 0——卡片"显示了"但完全看不见。
         let target = attachedFrame(
             to: settingsFrame,
-            height: panel.frame.height,
+            height: Self.panelHeight,
             visibleFrame: screen.visibleFrame
         )
         if panel.frame != target { panel.setFrame(target, display: true) }
