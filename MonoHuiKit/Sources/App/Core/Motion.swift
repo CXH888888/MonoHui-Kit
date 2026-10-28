@@ -120,6 +120,12 @@ enum Motion {
         }
     }
 
+    // MARK: - 弹窗自绘阴影
+
+    /// 弹窗四周留出的透明边距，给自绘阴影落位用（窗口本身 hasShadow = false）。
+    /// 各弹窗显式 setContentSize 时必须加上 `2 * popupShadowInset`，否则内容会被窗口边缘裁掉。
+    static let popupShadowInset: CGFloat = 24
+
     // MARK: - 模糊（交叉淡入时的半径，收尾必须回 0）
 
     enum Blur {

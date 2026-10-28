@@ -414,8 +414,10 @@ struct QuickRenamePopover: View {
             window.styleMask.remove(.resizable)
             window.isMovableByWindowBackground = true
             // 让窗口根据 SwiftUI 内容自动调整高度
-            window.contentMinSize = NSSize(width: 480, height: 400)
-            window.contentMaxSize = NSSize(width: 480, height: 1200)
+            window.contentMinSize = NSSize(width: 480 + 2 * Motion.popupShadowInset,
+                                           height: 400 + 2 * Motion.popupShadowInset)
+            window.contentMaxSize = NSSize(width: 480 + 2 * Motion.popupShadowInset,
+                                           height: 1200 + 2 * Motion.popupShadowInset)
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
             window.makeKeyAndOrderFront(nil)
@@ -467,6 +469,7 @@ struct QuickRenamePopover: View {
             }
             .buttonStyle(.plain)
             .help("重置为解析默认值")
+            PopoverCloseButton()
         }
     }
 

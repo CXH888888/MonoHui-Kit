@@ -361,27 +361,45 @@ final class HotKeyDispatcher {
         }
     }
 
+    /// 当前唯一允许存在的弹窗。连点快捷键 / 服务与快捷键同时触发时，
+    /// 只靠「遍历 NSApp.windows 按 level 过滤」会漏掉刚创建还没上屏的那个，于是叠出两块。
+    private static weak var currentPopup: NSWindow?
+
     private func openStandaloneWindow<V: View>(view: V) {
-        let hosting = NSHostingController(rootView: view)
+        // 先收掉上一块（不管是哪条路径创建的）
+        if let previous = Self.currentPopup {
+            previous.orderOut(nil)
+            previous.close()
+            Self.currentPopup = nil
+        }
+        for stale in NSApp.windows where stale.identifier?.rawValue == "InteractivePopup" {
+            stale.orderOut(nil)
+            stale.close()
+        }
+
+        // 系统窗口阴影对无边框窗口是按内容 alpha 生成的，半径固定，压在这块薄面板上显得很重。
+        // 关掉窗口阴影，改由 SwiftUI 自绘一圈淡阴影；四周留出 24pt 透明边距给阴影落位。
+        let shadowInset: CGFloat = 24
+        let content = view
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
+            .padding(shadowInset)
+
+        let hosting = NSHostingController(rootView: content)
         let window = PopupWindow(contentViewController: hosting)
         // 无边框：之前用 .titled 保留红色关闭按钮，但会带一条系统标题栏，观感很突兀。
-        // 关闭改由 Esc / 完成动作触发（见 PopupWindow.cancelOperation）。
+        // 关闭由右上角关闭按钮 / Esc 负责（见 PopoverCloseButton、PopupWindow.cancelOperation）。
         window.styleMask = [.borderless, .fullSizeContentView]
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.hasShadow = true
+        window.hasShadow = false
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
         window.hidesOnDeactivate = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // 标记为弹窗窗口（windowWillClose 用此判断）
         window.identifier = NSUserInterfaceItemIdentifier("InteractivePopup")
-
-        // 去掉标题栏后由自己补圆角，跟系统弹窗的观感保持一致
-        hosting.view.wantsLayer = true
-        hosting.view.layer?.cornerRadius = 12
-        hosting.view.layer?.cornerCurve = .continuous
-        hosting.view.layer?.masksToBounds = true
+        Self.currentPopup = window
 
         // 去掉标题栏后没有红色关闭按钮了，Esc 是唯一的取消方式。
         // 只靠 NSWindow.cancelOperation 不够稳（焦点在输入框或 SwiftUI 视图里会被吃掉），

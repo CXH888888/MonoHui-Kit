@@ -542,7 +542,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             // 服务菜单启动时（module 非空）：文件已通过命令行参数传入，
             // openFiles 可能是 macOS 重复调用，不能覆盖 preloadedURLs
-            if self.appState.module.isEmpty {
+            //
+            // 另外两种情况必须忽略，否则会同时出现「弹窗 + 主窗口」两块界面：
+            // 1) 命令行带 --module —— 说明这次是服务/快捷键唤起，界面应该是弹窗
+            // 2) 已经有弹窗在屏上 —— 说明弹窗流程已经在走，别再拉主窗口
+            let launchedAsService = ProcessInfo.processInfo.arguments.contains("--module")
+            let popupVisible = NSApp.windows.contains {
+                $0.identifier?.rawValue == "InteractivePopup" && $0.isVisible
+            }
+            if self.appState.module.isEmpty && !launchedAsService && !popupVisible {
                 self.appState.preloadedURLs = urls
                 self.appState.module = "compress"
                 self.appState.moduleArgs = ["mode": "interactive"]

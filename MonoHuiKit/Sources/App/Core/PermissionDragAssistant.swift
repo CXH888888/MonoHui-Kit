@@ -67,6 +67,8 @@ final class PermissionDragAssistant {
     private var hasSeenSettingsWindow = false
     private var missingSamples = 0
     private var awaySamples = 0
+    /// 显示那一刻是否已经授权。已授权时允许当「预览」看，不再秒收。
+    private var grantedAtShow = false
     private var shownAt = Date.distantPast
 
     private init() {}
@@ -77,11 +79,13 @@ final class PermissionDragAssistant {
     /// 自动化权限要跑 AppleScript，不适合轮询，交给「切回本 App 即收起」处理。
     func show(for pane: PermissionPane, grantedCheck: (() -> Bool)? = nil) {
         self.grantedCheck = grantedCheck
+        grantedAtShow = grantedCheck?() ?? false
         shownAt = Date()
 
         let card = PermissionDragCard(
             pane: pane,
             applicationURL: Bundle.main.bundleURL,
+            alreadyGranted: grantedAtShow,
             onClose: { [weak self] in self?.hide() },
             onDragAccepted: { [weak self] in
                 self?.hide()
@@ -165,7 +169,7 @@ final class PermissionDragAssistant {
     private func follow() {
         guard let panel else { return }
 
-        if grantedCheck?() == true {
+        if grantedCheck?() == true, !grantedAtShow {
             hide(reason: "授权已完成")
             return
         }
@@ -288,6 +292,7 @@ final class PermissionDragAssistant {
 private struct PermissionDragCard: View {
     let pane: PermissionPane
     let applicationURL: URL
+    let alreadyGranted: Bool
     let onClose: () -> Void
     let onDragAccepted: () -> Void
 
@@ -303,10 +308,12 @@ private struct PermissionDragCard: View {
                 .frame(width: 56, height: 56)
                 .help("拖到系统设置的列表里")
             VStack(alignment: .leading, spacing: 3) {
-                Text("把 \(appName) 拖进「\(pane.listName)」列表")
+                Text(alreadyGranted ? "已授权 · 仍可手动添加" : "把 \(appName) 拖进「\(pane.listName)」列表")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.appleInk)
-                Text("列表里找不到这个 App 时用拖拽添加，拖进去后打开开关即可")
+                Text(alreadyGranted
+                     ? "当前已是授权状态；若列表里看不到本 App，可再把图标拖进去"
+                     : "列表里找不到这个 App 时用拖拽添加，拖进去后打开开关即可")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(Color.appleSoft)
                     .fixedSize(horizontal: false, vertical: true)

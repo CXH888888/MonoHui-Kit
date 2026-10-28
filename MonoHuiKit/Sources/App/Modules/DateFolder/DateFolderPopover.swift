@@ -165,7 +165,8 @@ struct DateFolderPopover: View {
                 guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
                 // 高度跟随是否有选中文件（moveFileArea 占额外 50 高度）
                 let height = selectedFileCount > 0 ? 430 : 380
-                window.setContentSize(NSSize(width: 480, height: height))
+                window.setContentSize(NSSize(width: 480 + 2 * Motion.popupShadowInset,
+                                             height: CGFloat(height) + 2 * Motion.popupShadowInset))
                 window.styleMask.remove(.resizable)
                 window.isMovableByWindowBackground = true
                 FinderSelection.positionWindowNearFinder(window)
@@ -200,6 +201,7 @@ struct DateFolderPopover: View {
             }
             .buttonStyle(.plain)
             .help("清空所有选中与输入")
+            PopoverCloseButton()
         }
     }
 

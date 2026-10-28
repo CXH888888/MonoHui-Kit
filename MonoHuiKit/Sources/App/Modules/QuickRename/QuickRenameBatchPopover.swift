@@ -452,8 +452,10 @@ struct QuickRenameBatchPopover: View {
             guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
             window.styleMask.remove(.resizable)
             window.isMovableByWindowBackground = true
-            window.contentMinSize = NSSize(width: 560, height: 500)
-            window.contentMaxSize = NSSize(width: 560, height: 1200)
+            window.contentMinSize = NSSize(width: 560 + 2 * Motion.popupShadowInset,
+                                           height: 500 + 2 * Motion.popupShadowInset)
+            window.contentMaxSize = NSSize(width: 560 + 2 * Motion.popupShadowInset,
+                                           height: 1200 + 2 * Motion.popupShadowInset)
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
             window.makeKeyAndOrderFront(nil)
@@ -581,6 +583,7 @@ struct QuickRenameBatchPopover: View {
             }
             .buttonStyle(.plain)
             .help("重置")
+            PopoverCloseButton()
         }
     }
 
