@@ -365,6 +365,17 @@ final class HotKeyDispatcher {
     /// 只靠「遍历 NSApp.windows 按 level 过滤」会漏掉刚创建还没上屏的那个，于是叠出两块。
     private static weak var currentPopup: NSWindow?
 
+    /// 唤起弹窗前的前台 App（一般是 Finder）。弹窗关掉后把前台还给它，
+    /// 否则本 App 仍是 active，焦点会落到主窗口上，看起来就是「关掉弹窗又冒出主界面」。
+    private static var previousFrontmost: NSRunningApplication?
+
+    private static func restoreFrontmost(_ app: NSRunningApplication?) {
+        guard let app,
+              app.bundleIdentifier != Bundle.main.bundleIdentifier,
+              !app.isTerminated else { return }
+        app.activate(options: [])
+    }
+
     private func openStandaloneWindow<V: View>(view: V) {
         // 先收掉上一块（不管是哪条路径创建的）
         if let previous = Self.currentPopup {
@@ -376,6 +387,20 @@ final class HotKeyDispatcher {
             stale.orderOut(nil)
             stale.close()
         }
+
+        // 弹窗是「即用即走」的：先把主窗口收起来，保证屏幕上只有一块弹窗。
+        // 之前主窗口一直留在原地，弹窗淡入后看着就是两个窗口。
+        let mainWindows = NSApp.windows.filter { $0.level == .normal && $0.isVisible }
+        if !mainWindows.isEmpty {
+            for window in mainWindows { window.orderOut(nil) }
+            if NSApp.activationPolicy() == .regular {
+                NSApp.setActivationPolicy(.accessory)
+            }
+            AppLog.shared.log("弹窗显示前收起主窗口 \(mainWindows.count) 个", category: "Dispatcher")
+        }
+
+        // 记录前台 App（必须在 NSApp.activate 之前）
+        Self.previousFrontmost = NSWorkspace.shared.frontmostApplication
 
         // 系统窗口阴影对无边框窗口是按内容 alpha 生成的，半径固定，压在这块薄面板上显得很重。
         // 关掉窗口阴影，改由 SwiftUI 自绘一圈淡阴影；四周留出 24pt 透明边距给阴影落位。
@@ -409,11 +434,15 @@ final class HotKeyDispatcher {
             window.close()
             return nil
         }
+        // 唤起弹窗前的前台 App。弹窗关掉后把前台还给它——
+        // 否则 App 仍是 active，焦点会落到主窗口上，用户看到的就是「关掉弹窗又冒出主界面」。
+        let previousApp = Self.previousFrontmost
         if let escMonitor {
             NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
                                                    object: window,
                                                    queue: .main) { _ in
                 NSEvent.removeMonitor(escMonitor)
+                Self.restoreFrontmost(previousApp)
             }
         }
 

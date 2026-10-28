@@ -134,6 +134,8 @@ struct QuickRenameBatchPopover: View {
     @State private var isAddingChannel = false
     @State private var newChannelInput = ""
     @State private var hoveringChannel: String? = nil
+    /// 弹窗唤起时自动聚焦名称输入框
+    @FocusState private var nameFocused: Bool
     @FocusState private var newChannelFocused: Bool
     @FocusState private var customChannelFocused: Bool
 
@@ -459,6 +461,11 @@ struct QuickRenameBatchPopover: View {
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
             window.makeKeyAndOrderFront(nil)
+
+                // 唤起即聚焦名称输入框，省掉一次点击
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    nameFocused = true
+                }
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -998,6 +1005,7 @@ struct QuickRenameBatchPopover: View {
     // 名字编辑器
     private var nameEditor: some View {
         TextField("输入名字", text: $namePart)
+            .focused($nameFocused)
             .textFieldStyle(.plain)
             .font(.system(size: 13, weight: .regular))
             .foregroundStyle(Color.appleInk)

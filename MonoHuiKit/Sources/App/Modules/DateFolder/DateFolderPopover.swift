@@ -17,6 +17,8 @@ struct DateFolderPopover: View {
     // "新增标签"输入态
     @State private var isAddingChannel = false
     @State private var newChannelInput = ""
+    /// 弹窗唤起时自动聚焦名称输入框
+    @FocusState private var nameFocused: Bool
     @FocusState private var newChannelFocused: Bool
     // 当前 hover 的自定义标签名（用于显示右上角删除按钮）
     @State private var hoveringChannel: String?
@@ -172,6 +174,11 @@ struct DateFolderPopover: View {
                 FinderSelection.positionWindowNearFinder(window)
                 window.level = .screenSaver
                 window.makeKeyAndOrderFront(nil)
+
+                // 唤起即聚焦名称输入框，省掉一次点击
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    nameFocused = true
+                }
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
@@ -486,6 +493,7 @@ struct DateFolderPopover: View {
 
                 // 名称输入框：吃掉剩余宽度；渠道标签过长时保底 120pt，不让输入框被挤没
                 TextField("输入项目名称", text: $namePart)
+            .focused($nameFocused)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Color.appleInk)

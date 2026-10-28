@@ -143,6 +143,8 @@ struct QuickRenamePopover: View {
     @AppStorage("datefolder_custom_channels_json") private var customChannelsJSON: String = "[]"
     @State private var isAddingChannel = false
     @State private var newChannelInput = ""
+    /// 弹窗唤起时自动聚焦名称输入框
+    @FocusState private var nameFocused: Bool
     @FocusState private var newChannelFocused: Bool
     @State private var hoveringChannel: String?
     @FocusState private var customChannelFocused: Bool
@@ -421,6 +423,11 @@ struct QuickRenamePopover: View {
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
             window.makeKeyAndOrderFront(nil)
+
+                // 唤起即聚焦名称输入框，省掉一次点击
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    nameFocused = true
+                }
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -757,6 +764,7 @@ struct QuickRenamePopover: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.appleInk)
             TextField("输入名字", text: $namePart)
+            .focused($nameFocused)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Color.appleInk)
