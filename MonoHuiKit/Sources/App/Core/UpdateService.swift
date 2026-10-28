@@ -167,14 +167,18 @@ final class UpdateService {
     func downloadAndInstall() {
         guard case .available = state, let asset = pendingAsset else { return }
         state = .downloading(0)
-        try? FileManager.default.removeItem(at: Self.failureMarkURL)
+        Self.archive(Self.failureMarkURL.path)
 
-        let delegate = DownloadProgressDelegate(fallbackTotal: asset.size ?? 0) { [weak self] fraction in
+        // 进度只能靠 task.progress 的 KVO 拿：session 的 didWriteData 在这套
+        // completion-handler 任务上不会回调（实测 0 次），进度条会一直停在 0。
+        let onProgress: (Double) -> Void = { [weak self] fraction in
             Task { @MainActor in
                 if case .downloading = self?.state { self?.state = .downloading(fraction) }
             }
         }
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let session = URLSession(configuration: .default,
+                                 delegate: RedirectStripper(),
+                                 delegateQueue: nil)
 
         Task {
             defer { session.finishTasksAndInvalidate() }
@@ -186,7 +190,10 @@ final class UpdateService {
 
             for request in Self.candidateRequests(for: asset) {
                 do {
-                    let (tmpURL, response) = try await session.download(for: request)
+                    let (tmpURL, response) = try await Self.download(request,
+                                                                     session: session,
+                                                                     fallbackTotal: asset.size ?? 0,
+                                                                     onProgress: onProgress)
                     guard let http = response as? HTTPURLResponse else {
                         remember("下载失败：服务器响应异常")
                         continue
@@ -213,7 +220,7 @@ final class UpdateService {
                     }
 
                     let dmgPath = "/tmp/\(asset.name)"
-                    try? FileManager.default.removeItem(atPath: dmgPath)
+                    Self.archive(dmgPath)   // 旧包不删，移进归档
                     try FileManager.default.moveItem(at: tmpURL, to: URL(fileURLWithPath: dmgPath))
 
                     AppLog.shared.log("更新包已下载：\(dmgPath)（\(size) 字节）",
@@ -254,12 +261,38 @@ final class UpdateService {
         return requests
     }
 
+    /// 下载单个请求，并通过 `task.progress` 的 KVO 回报进度。
+    ///
+    /// 不能用 `URLSession.download(for:)`：那套 async 便捷方法会给任务挂内部 delegate，
+    /// session 级 `didWriteData` 一次都不会回调（实测 15.9MB / 6.7s，回调 0 次），
+    /// 进度条因此永远停在 0。改用 completion-handler 版任务 + KVO 观察 `fractionCompleted`。
+    private static func download(_ request: URLRequest,
+                                 session: URLSession,
+                                 fallbackTotal: Int64,
+                                 onProgress: @escaping (Double) -> Void) async throws -> (URL, URLResponse) {
+        let observer = ProgressRelay(fallbackTotal: fallbackTotal, onProgress: onProgress)
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.downloadTask(with: request) { url, response, error in
+                observer.stop()
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let url, let response {
+                    continuation.resume(returning: (url, response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+            observer.attach(to: task)
+            task.resume()
+        }
+    }
+
     /// 挂载新 dmg → 覆盖当前 App → 重启。
     /// 实际替换由独立脚本完成：本进程先退出，脚本等 1.5 秒再动手，
     /// 避免「自己删自己」时文件仍被占用。
     /// 脚本按「先解到临时目录 → 校验通过 → 再替换」的顺序执行，
     /// 任何一步失败都保留旧版本并重新拉起，不会把用户的应用删没。
-    /// 收尾：安装包 dmg 删除；旧版本备份移入废纸篓（不 rm，避开批量删除保护）。
+    /// 收尾：安装包与旧版本备份都移入 `~/.monohui-kit/archive`，不做任何删除。
     private func installAndRestart(dmgPath: String) {
         let target = Bundle.main.bundlePath
         let script = """
@@ -276,34 +309,33 @@ final class UpdateService {
         BACKUP="$(dirname "$TARGET")/.MonoHui-Kit.app.previous"
         MOUNT=""
 
-        # App 包有 70+ 个文件，直接 rm -rf 会撞上本机「批量删除需确认」的保护而被静默拦下，
-        # 白占 40MB。先试直接删，删不掉再移进废纸篓（并去掉前导点，否则在 Finder 里是隐藏文件）。
-        purge() {
+        # 项目约定：任何文件都不删除，一律移入归档目录（旧版本 App、安装包、临时目录都是）。
+        ARCHIVE="$HOME/.monohui-kit/archive"
+        archive() {
             [ -e "$1" ] || return 0
-            /bin/rm -rf "$1" 2>/dev/null
-            [ -e "$1" ] || return 0
+            /bin/mkdir -p "$ARCHIVE"
             local name
             name="$(basename "$1")"
             name="${name#.}"
-            /bin/mv "$1" "$HOME/.Trash/$name.$(date +%Y%m%d-%H%M%S)" 2>/dev/null
+            /bin/mv "$1" "$ARCHIVE/$name.$(date +%Y%m%d-%H%M%S)" 2>/dev/null
         }
 
         fail() {
             echo "失败：$1"
             printf '%s' "$1" > "$MARK"
             [ -n "$MOUNT" ] && /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
-            purge "$STAGE"
+            archive "$STAGE"
             /usr/bin/open "$TARGET" >/dev/null 2>&1
             exit 1
         }
 
         sleep 1.5
 
-        # 清掉以前失败遗留的安装包（当前这次要用的保留）
+        # 收走以前失败遗留的安装包（当前这次要用的保留）
         for old in /tmp/MonoHui-Kit-v*.dmg; do
             [ -e "$old" ] || continue
             [ "$old" = "$DMG" ] && continue
-            /bin/rm -f "$old"
+            archive "$old"
         done
 
         /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
@@ -318,21 +350,22 @@ final class UpdateService {
         [ -d "$SRC" ] || fail "dmg 内未找到 MonoHui-Kit.app"
         [ -f "$SRC/Contents/MacOS/MonoHuiKit" ] || fail "dmg 内可执行文件缺失"
 
-        purge "$STAGE"
+        archive "$STAGE"
         /bin/cp -R "$SRC" "$STAGE" || fail "拷贝到临时目录失败"
         /usr/bin/xattr -dr com.apple.quarantine "$STAGE" >/dev/null 2>&1
 
-        # 旧版本先改名保留，替换成功后才清理；任何一步失败都能回滚
-        purge "$BACKUP"
+        # 旧版本先改名保留，替换成功后才归档；任何一步失败都能回滚
+        archive "$BACKUP"
         /bin/mv "$TARGET" "$BACKUP" || fail "移走旧版本失败"
         if ! /bin/mv "$STAGE" "$TARGET"; then
             /bin/mv "$BACKUP" "$TARGET" >/dev/null 2>&1
             fail "替换失败，已回滚"
         fi
-        purge "$BACKUP"
+        archive "$BACKUP"
 
         /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
-        rm -f "$DMG" "$MARK"
+        archive "$DMG"
+        archive "$MARK"
         echo "完成：$TARGET"
         /usr/bin/open "$TARGET"
         """
@@ -367,12 +400,45 @@ final class UpdateService {
     func consumeLastFailure() {
         let url = Self.failureMarkURL
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
-        try? FileManager.default.removeItem(at: url)
+        Self.archive(url.path)
         let reason = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !reason.isEmpty else { return }
         // 只在还没进入任何状态时提示，避免盖掉用户刚点出来的结果
         if case .idle = state {
             state = .failed("上次更新未完成：\(reason)（详见 ~/.monohui-kit/logs/update.log）")
+        }
+    }
+
+    // MARK: - 归档（项目约定：不删除文件，一律移入归档目录）
+
+    static var archiveDirectory: URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".monohui-kit/archive", isDirectory: true)
+    }
+
+    private static let archiveStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    /// 把文件/目录移到 `~/.monohui-kit/archive/`，重名时加时间戳。移动失败就算了，绝不删除。
+    @discardableResult
+    static func archive(_ path: String) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: path) else { return false }
+        let dir = archiveDirectory
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            var name = (path as NSString).lastPathComponent
+            if name.hasPrefix(".") { name = String(name.dropFirst()) }
+            let dest = dir.appendingPathComponent("\(name).\(archiveStamp.string(from: Date()))")
+            try fm.moveItem(atPath: path, toPath: dest.path)
+            return true
+        } catch {
+            AppLog.shared.log("归档失败 \(path)：\(error.localizedDescription)",
+                              category: "Update", level: .warn)
+            return false
         }
     }
 
@@ -424,34 +490,10 @@ private struct GitHubRelease: Decodable {
     }
 }
 
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-    // 进度回调本身只做一次主线程跳转，由调用方保证线程安全；
-    // 标成 @Sendable 反而要求调用方传入 Sendable 闭包，与 [weak self] 冲突。
-    let onProgress: (Double) -> Void
-    /// CDN 若用分块传输，`totalBytesExpectedToWrite` 会是 -1，此时用 Release 里记录的资产大小兜底
-    let fallbackTotal: Int64
-
-    init(fallbackTotal: Int64 = 0, onProgress: @escaping (Double) -> Void) {
-        self.fallbackTotal = fallbackTotal
-        self.onProgress = onProgress
-    }
-
-    func urlSession(_ session: URLSession,
-                    downloadTask: URLSessionDownloadTask,
-                    didWriteData bytesWritten: Int64,
-                    totalBytesWritten: Int64,
-                    totalBytesExpectedToWrite: Int64) {
-        let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : fallbackTotal
-        guard total > 0 else { return }
-        onProgress(min(1, Double(totalBytesWritten) / Double(total)))
-    }
-
-    func urlSession(_ session: URLSession,
-                    downloadTask: URLSessionDownloadTask,
-                    didFinishDownloadingTo location: URL) {}
-
-    /// GitHub 的资产下载会 302 跳到 `release-assets.githubusercontent.com` 的签名地址。
-    /// 签名地址自带凭据，跨域再带 Authorization 会被对象存储拒绝，这里显式摘掉。
+/// GitHub 的资产下载会 302 跳到 `release-assets.githubusercontent.com` 的签名地址。
+/// 签名地址自带凭据，跨域再带 Authorization 会被对象存储拒绝，这里显式摘掉。
+/// 注意：只实现重定向，不实现下载进度——那套回调在 completion-handler 任务上不会触发。
+private final class RedirectStripper: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession,
                     task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
@@ -462,5 +504,47 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
             redirected.setValue(nil, forHTTPHeaderField: "Authorization")
         }
         completionHandler(redirected)
+    }
+}
+
+/// 通过 KVO 观察 `URLSessionTask.progress`，把下载进度回报给 UI。
+/// 这是唯一可靠的进度来源：session 的 `didWriteData` 在 completion-handler 任务上是 0 回调。
+private final class ProgressRelay: NSObject {
+    private let fallbackTotal: Int64
+    private let onProgress: (Double) -> Void
+    private var observation: NSKeyValueObservation?
+    private var lastReported: Double = -1
+    private var lastTime = Date.distantPast
+
+    init(fallbackTotal: Int64, onProgress: @escaping (Double) -> Void) {
+        self.fallbackTotal = fallbackTotal
+        self.onProgress = onProgress
+    }
+
+    func attach(to task: URLSessionDownloadTask) {
+        observation = task.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            self?.report(progress)
+        }
+    }
+
+    func stop() {
+        observation?.invalidate()
+        observation = nil
+    }
+
+    private func report(_ progress: Progress) {
+        let done = Double(progress.completedUnitCount)
+        let total = progress.totalUnitCount > 0
+            ? Double(progress.totalUnitCount)
+            : Double(fallbackTotal)
+        guard total > 0, done > 0 else { return }
+
+        let fraction = min(1, done / total)
+        // 节流：进度至少前进 0.5%，或距上次上报超过 0.1 秒，避免高频刷主线程
+        let now = Date()
+        guard fraction - lastReported >= 0.005 || now.timeIntervalSince(lastTime) >= 0.1 else { return }
+        lastReported = fraction
+        lastTime = now
+        onProgress(fraction)
     }
 }
