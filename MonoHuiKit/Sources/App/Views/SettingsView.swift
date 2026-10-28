@@ -53,6 +53,11 @@ struct SettingsView: View {
     private var permissionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("权限")
+            Text("点「去设置」后，系统设置窗口下方会贴出一块可拖拽的卡片：把里面的 App 图标拖进授权列表即可。卡片跟着系统设置窗口走，切到别的 App 会自动收起。")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(Color.appleMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, -6)
             VStack(spacing: 0) {
                 permissionRow(
                     name: "自动化（Finder）",

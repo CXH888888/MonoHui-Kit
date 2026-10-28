@@ -54,6 +54,11 @@ final class PermissionDragAssistant {
     private static let minimumWidth: CGFloat = 320
     private static let maximumLifetime: TimeInterval = 300
     private static let settingsBundleID = "com.apple.systempreferences"
+    /// 刚点「去设置」的这几秒里，本 App 可能还是前台（系统设置正在激活），
+    /// 此时不能按 frontmost 判据收起卡片，否则用户看到的是「点了没反应」。
+    private static let frontmostGrace: TimeInterval = 2.0
+    /// 连续多少拍（120ms/拍）前台都不是系统设置才真正收起，避免一次抖动就消失
+    private static let awaySamplesToHide = 6
 
     private var panel: NSPanel?
     private var hostingController: NSHostingController<PermissionDragCard>?
@@ -61,6 +66,7 @@ final class PermissionDragAssistant {
     private var grantedCheck: (() -> Bool)?
     private var hasSeenSettingsWindow = false
     private var missingSamples = 0
+    private var awaySamples = 0
     private var shownAt = Date.distantPast
 
     private init() {}
@@ -125,17 +131,22 @@ final class PermissionDragAssistant {
             panel.orderOut(nil)
             hasSeenSettingsWindow = false
             missingSamples = 0
+            awaySamples = 0
         }
         follow()
         startFollowing()
     }
 
-    func hide() {
+    func hide(reason: String = "") {
+        if panel?.isVisible == true {
+            AppLog.shared.log("权限助手收起 \(reason.isEmpty ? "" : "（\(reason)）")", category: "Permission")
+        }
         followTask?.cancel()
         followTask = nil
         grantedCheck = nil
         hasSeenSettingsWindow = false
         missingSamples = 0
+        awaySamples = 0
         panel?.orderOut(nil)
     }
 
@@ -155,28 +166,35 @@ final class PermissionDragAssistant {
         guard let panel else { return }
 
         if grantedCheck?() == true {
-            hide()
+            hide(reason: "授权已完成")
             return
         }
         if Date().timeIntervalSince(shownAt) > Self.maximumLifetime {
-            hide()
+            hide(reason: "超时")
             return
         }
         // 用户切回本 App（或任何别的 App）就收起。面板不抢焦点，
         // 所以拖拽期间前台始终是系统设置，不会误判。
+        // 但刚点「去设置」的头 2 秒要放行（系统设置还在激活），并且要连续多拍确认才收，
+        // 否则一次 frontmost 抖动就会把刚出现的卡片收掉——用户看到的就是「权限引导没出来」。
         if hasSeenSettingsWindow,
+           Date().timeIntervalSince(shownAt) > Self.frontmostGrace,
            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
            frontmost != Self.settingsBundleID {
-            hide()
+            awaySamples += 1
+            if awaySamples >= Self.awaySamplesToHide {
+                hide(reason: "前台切到 \(frontmost)")
+            }
             return
         }
+        awaySamples = 0
 
         guard let settingsFrame = Self.systemSettingsWindowFrame(),
               let screen = Self.screen(containingMostOf: settingsFrame) else {
             missingSamples += 1
             // 冷启动时给系统设置约 4.8 秒；一旦见过窗口，关闭后 0.5 秒内就收起
             let limit = hasSeenSettingsWindow ? 4 : 40
-            if missingSamples >= limit { hide() }
+            if missingSamples >= limit { hide(reason: "找不到系统设置窗口") }
             return
         }
         hasSeenSettingsWindow = true
@@ -188,7 +206,10 @@ final class PermissionDragAssistant {
             visibleFrame: screen.visibleFrame
         )
         if panel.frame != target { panel.setFrame(target, display: true) }
-        if !panel.isVisible { panel.orderFrontRegardless() }
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+            AppLog.shared.log("权限助手已显示 target=\(target)", category: "Permission")
+        }
     }
 
     /// 宽度取窗口宽度（夹在屏幕内），x 跟随窗口左沿，优先贴下沿，放不下翻到上沿。

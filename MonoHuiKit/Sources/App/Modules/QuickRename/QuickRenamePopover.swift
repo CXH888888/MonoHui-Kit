@@ -418,7 +418,7 @@ struct QuickRenamePopover: View {
             window.contentMaxSize = NSSize(width: 480, height: 1200)
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
-            Motion.present(window)
+            window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
     }

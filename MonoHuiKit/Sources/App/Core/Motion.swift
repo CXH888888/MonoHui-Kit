@@ -18,6 +18,13 @@ import QuartzCore
 /// 调用点一律用这里的令牌，不要再写裸数字。
 enum Motion {
 
+    // MARK: - 全局节奏
+
+    /// 规范给的基准值偏快（standard 240ms），实测观感不够「丝滑」。
+    /// 统一乘这个系数放慢：1.1 → standard ≈ 264ms、fast ≈ 176ms、instant ≈ 132ms。
+    /// 想整体更快/更慢只改这一个数，不要改下面的基准值。
+    static let tempo: Double = 1.1
+
     // MARK: - 时长
 
     enum Duration {
@@ -76,16 +83,16 @@ enum Motion {
     /// 小幅位移 / 淡入淡出（160ms + ease.in-out）
     static var moveFast: Animation? { ease(.inOut, Duration.fast) }
     /// 进度条这类连续量：线性短过渡，避免逐帧缓动造成的滞后
-    static var progress: Animation? { reduceMotion ? nil : .linear(duration: Duration.instant) }
+    static var progress: Animation? { reduceMotion ? nil : .linear(duration: Duration.instant * tempo) }
 
     // MARK: - 弹簧
 
     /// 按压、开关、thumb、小指示器（visualDuration .26 · bounce .12）
-    static var snappy: Animation? { reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.12) }
+    static var snappy: Animation? { reduceMotion ? nil : .spring(duration: 0.26 * tempo, bounce: 0.12) }
     /// 面板、高度变化、布局位移，不过冲（visualDuration .4 · bounce 0）
-    static var smooth: Animation? { reduceMotion ? nil : .spring(duration: 0.40, bounce: 0) }
+    static var smooth: Animation? { reduceMotion ? nil : .spring(duration: 0.40 * tempo, bounce: 0) }
     /// 形变、共享高亮、跟随内容的宽度（visualDuration .42 · bounce .16）
-    static var morph: Animation? { reduceMotion ? nil : .spring(duration: 0.42, bounce: 0.16) }
+    static var morph: Animation? { reduceMotion ? nil : .spring(duration: 0.42 * tempo, bounce: 0.16) }
     /// 直接操纵、紧跟指针（stiffness 520 · damping 38）
     static var responsive: Animation? {
         reduceMotion ? nil : .interpolatingSpring(stiffness: 520, damping: 38)
@@ -109,7 +116,7 @@ enum Motion {
 
         /// 第 index 项的延迟，总错峰封顶 `Duration.standard`（规范：封顶 240ms）
         static func delay(_ index: Int, step: Double = item) -> Double {
-            min(Double(index) * step, Duration.standard)
+            min(Double(index) * step, Duration.standard * tempo)
         }
     }
 
@@ -136,7 +143,7 @@ enum Motion {
 
     /// AppKit 动画时长：减弱动效时坍缩为 0，直接落位
     static func caDuration(_ duration: Double) -> Double {
-        reduceMotion ? 0 : duration
+        reduceMotion ? 0 : duration * tempo
     }
 
     /// 弹窗入场：先透明、再淡入（规范：面板 standard 240ms + ease.enter）。
@@ -152,9 +159,16 @@ enum Motion {
         window.alphaValue = 0
         window.makeKeyAndOrderFront(nil)
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = duration
+            ctx.duration = duration * tempo
             ctx.timingFunction = caEnter
             window.animator().alphaValue = 1
+        }
+        // 兜底：动画若被打断（窗口在别的 Space、runloop 卡住），alpha 会停在 0，
+        // 用户看到的就是「点了没反应」。超时后强制拉满。
+        let deadline = duration * tempo + 0.2
+        DispatchQueue.main.asyncAfter(deadline: .now() + deadline) { [weak window] in
+            guard let window, window.alphaValue < 1 else { return }
+            window.alphaValue = 1
         }
     }
 }

@@ -363,20 +363,41 @@ final class HotKeyDispatcher {
 
     private func openStandaloneWindow<V: View>(view: V) {
         let hosting = NSHostingController(rootView: view)
-        let window = NSWindow(contentViewController: hosting)
-        // 保留系统原生标题栏（含红色关闭按钮），只隐藏标题文字
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = false
+        let window = PopupWindow(contentViewController: hosting)
+        // 无边框：之前用 .titled 保留红色关闭按钮，但会带一条系统标题栏，观感很突兀。
+        // 关闭改由 Esc / 完成动作触发（见 PopupWindow.cancelOperation）。
+        window.styleMask = [.borderless, .fullSizeContentView]
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
         window.hidesOnDeactivate = false
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // 标记为弹窗窗口（windowWillClose 用此判断）
         window.identifier = NSUserInterfaceItemIdentifier("InteractivePopup")
-        // 显式显示关闭按钮（标准按钮位 0）
-        window.standardWindowButton(.closeButton)?.isHidden = false
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+
+        // 去掉标题栏后由自己补圆角，跟系统弹窗的观感保持一致
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.cornerRadius = 12
+        hosting.view.layer?.cornerCurve = .continuous
+        hosting.view.layer?.masksToBounds = true
+
+        // 去掉标题栏后没有红色关闭按钮了，Esc 是唯一的取消方式。
+        // 只靠 NSWindow.cancelOperation 不够稳（焦点在输入框或 SwiftUI 视图里会被吃掉），
+        // 这里再挂一个本地按键监听，窗口关闭时摘掉。
+        let escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53, window.isKeyWindow else { return event }
+            window.close()
+            return nil
+        }
+        if let escMonitor {
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+                                                   object: window,
+                                                   queue: .main) { _ in
+                NSEvent.removeMonitor(escMonitor)
+            }
+        }
 
         // 先设置内容大小，确保 frame 计算正确
         let fitting = hosting.view.fittingSize
@@ -389,7 +410,7 @@ final class HotKeyDispatcher {
         // 关键：不切换 activationPolicy（切到 regular 会唤出 SwiftUI WindowGroup 主窗口）
         // accessory 模式下也能显示独立 NSWindow，靠 NSApp.activate + screenSaver level 置顶
         window.level = .screenSaver
-        window.makeKeyAndOrderFront(nil)
+        Motion.present(window)
         NSApp.activate(ignoringOtherApps: true)
         // 再次激活确保置顶（macOS 有时需要两次）
         DispatchQueue.main.async {
@@ -397,5 +418,18 @@ final class HotKeyDispatcher {
             window.makeKeyAndOrderFront(nil)
         }
         AppLog.shared.log("独立窗口已显示 level=screenSaver（未切 activationPolicy）", category: "Dispatcher", level: .success)
+    }
+}
+
+/// 无边框弹窗窗口。
+///
+/// `.borderless` 的 NSWindow 默认 `canBecomeKey == false`，里面的输入框会完全收不到键盘，
+/// 所以必须显式放开；同时接管 Esc 关闭——去掉标题栏后用户没有红色关闭按钮可点。
+final class PopupWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) {
+        close()
     }
 }

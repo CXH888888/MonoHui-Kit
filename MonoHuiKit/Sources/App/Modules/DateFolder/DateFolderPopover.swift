@@ -170,7 +170,7 @@ struct DateFolderPopover: View {
                 window.isMovableByWindowBackground = true
                 FinderSelection.positionWindowNearFinder(window)
                 window.level = .screenSaver
-                Motion.present(window)
+                window.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
