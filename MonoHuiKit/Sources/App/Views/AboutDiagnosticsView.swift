@@ -173,7 +173,10 @@ struct AboutDiagnosticsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.appleMuted)
         }
-        .onAppear { repoField = UpdateService.repoSlug }
+        .onAppear {
+            repoField = UpdateService.repoSlug
+            UpdateService.shared.consumeLastFailure()
+        }
     }
 
     private func saveRepoSlug() {

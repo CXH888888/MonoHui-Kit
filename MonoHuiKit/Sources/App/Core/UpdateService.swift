@@ -89,6 +89,7 @@ final class UpdateService {
         let name: String
         let apiURL: String?
         let browserURL: String
+        let size: Int64?
     }
 
     /// 手动下载兜底：网络到不了 CDN 时让用户走浏览器
@@ -153,7 +154,8 @@ final class UpdateService {
             }
             pendingAsset = PendingAsset(name: dmg.name,
                                         apiURL: dmg.apiURL,
-                                        browserURL: dmg.browserDownloadURL)
+                                        browserURL: dmg.browserDownloadURL,
+                                        size: dmg.size)
             state = .available(release.tagName)
         } catch {
             state = .failed("网络错误：\(error.localizedDescription)")
@@ -165,8 +167,9 @@ final class UpdateService {
     func downloadAndInstall() {
         guard case .available = state, let asset = pendingAsset else { return }
         state = .downloading(0)
+        try? FileManager.default.removeItem(at: Self.failureMarkURL)
 
-        let delegate = DownloadProgressDelegate { [weak self] fraction in
+        let delegate = DownloadProgressDelegate(fallbackTotal: asset.size ?? 0) { [weak self] fraction in
             Task { @MainActor in
                 if case .downloading = self?.state { self?.state = .downloading(fraction) }
             }
@@ -200,6 +203,10 @@ final class UpdateService {
 
                     let size = (try? FileManager.default
                         .attributesOfItem(atPath: tmpURL.path)[.size] as? Int64) ?? 0
+                    if let expected = asset.size, expected > 0, size != expected {
+                        remember("下载失败：大小不符（期望 \(expected)，实际 \(size)）")
+                        continue
+                    }
                     guard size > 1_000_000 else {
                         remember("下载失败：文件不完整（\(size) 字节）")
                         continue
@@ -257,37 +264,53 @@ final class UpdateService {
         let script = """
         #!/bin/bash
         LOG="$HOME/.monohui-kit/logs/update.log"
+        MARK="$HOME/.monohui-kit/update-failed.txt"
         mkdir -p "$(dirname "$LOG")"
         exec >>"$LOG" 2>&1
         echo "=== $(date '+%Y-%m-%d %H:%M:%S') 开始更新 ==="
 
         DMG="\(dmgPath)"
         TARGET="\(target)"
-        SRC="/Volumes/\(Self.volumeName)/MonoHui-Kit.app"
-        STAGE="/Applications/.MonoHui-Kit.app.new"
+        STAGE="$(dirname "$TARGET")/.MonoHui-Kit.app.new"
+        BACKUP="$(dirname "$TARGET")/.MonoHui-Kit.app.previous"
+        MOUNT=""
 
         fail() {
             echo "失败：$1"
-            /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
-            /usr/bin/open "$TARGET"
+            printf '%s' "$1" > "$MARK"
+            [ -n "$MOUNT" ] && /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
+            /usr/bin/open "$TARGET" >/dev/null 2>&1
             exit 1
         }
 
         sleep 1.5
         /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
-        /usr/bin/hdiutil attach "$DMG" -nobrowse -noautoopen >/dev/null || fail "挂载 dmg 失败"
+
+        # 卷名被占用时 hdiutil 会挂到 "MonoHui-Kit 1"，所以从输出里取真实挂载点
+        MOUNT="$(/usr/bin/hdiutil attach "$DMG" -nobrowse -noautoopen 2>/dev/null \
+                 | grep -oE '/Volumes/.*$' | head -1 | sed 's/[[:space:]]*$//')"
+        [ -n "$MOUNT" ] || fail "挂载 dmg 失败"
+        echo "挂载点：$MOUNT"
+
+        SRC="$MOUNT/MonoHui-Kit.app"
         [ -d "$SRC" ] || fail "dmg 内未找到 MonoHui-Kit.app"
-        [ -d "$SRC/Contents/MacOS/MonoHuiKit" ] || fail "dmg 内可执行文件缺失"
+        [ -f "$SRC/Contents/MacOS/MonoHuiKit" ] || fail "dmg 内可执行文件缺失"
 
         rm -rf "$STAGE"
         /bin/cp -R "$SRC" "$STAGE" || fail "拷贝到临时目录失败"
         /usr/bin/xattr -dr com.apple.quarantine "$STAGE" >/dev/null 2>&1
 
-        rm -rf "$TARGET" || fail "删除旧版本失败"
-        /bin/mv "$STAGE" "$TARGET" || fail "替换失败"
+        # 旧版本先改名保留，替换成功后才删；任何一步失败都能回滚
+        rm -rf "$BACKUP"
+        /bin/mv "$TARGET" "$BACKUP" || fail "移走旧版本失败"
+        if ! /bin/mv "$STAGE" "$TARGET"; then
+            /bin/mv "$BACKUP" "$TARGET" >/dev/null 2>&1
+            fail "替换失败，已回滚"
+        fi
+        rm -rf "$BACKUP"
 
-        /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
-        rm -f "$DMG"
+        /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
+        rm -f "$DMG" "$MARK"
         echo "完成：$TARGET"
         /usr/bin/open "$TARGET"
         """
@@ -312,6 +335,24 @@ final class UpdateService {
     }
 
     // MARK: - 工具
+
+    /// 上次更新的收尾脚本若失败，本进程早已退出、界面无从得知。
+    /// 脚本会把失败原因写进这个文件，下次启动时读出来展示一次后删除。
+    private static var failureMarkURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".monohui-kit/update-failed.txt")
+    }
+
+    func consumeLastFailure() {
+        let url = Self.failureMarkURL
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(at: url)
+        let reason = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty else { return }
+        // 只在还没进入任何状态时提示，避免盖掉用户刚点出来的结果
+        if case .idle = state {
+            state = .failed("上次更新未完成：\(reason)（详见 ~/.monohui-kit/logs/update.log）")
+        }
+    }
 
     /// PAT：构建时从 ~/.monohui-kit/github-token 打进 Bundle 资源
     static func githubToken() -> String? {
@@ -350,11 +391,13 @@ private struct GitHubRelease: Decodable {
         let name: String
         let apiURL: String?
         let browserDownloadURL: String
+        let size: Int64?
 
         enum CodingKeys: String, CodingKey {
             case name
             case apiURL = "url"
             case browserDownloadURL = "browser_download_url"
+            case size
         }
     }
 }
@@ -363,8 +406,11 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     // 进度回调本身只做一次主线程跳转，由调用方保证线程安全；
     // 标成 @Sendable 反而要求调用方传入 Sendable 闭包，与 [weak self] 冲突。
     let onProgress: (Double) -> Void
+    /// CDN 若用分块传输，`totalBytesExpectedToWrite` 会是 -1，此时用 Release 里记录的资产大小兜底
+    let fallbackTotal: Int64
 
-    init(onProgress: @escaping (Double) -> Void) {
+    init(fallbackTotal: Int64 = 0, onProgress: @escaping (Double) -> Void) {
+        self.fallbackTotal = fallbackTotal
         self.onProgress = onProgress
     }
 
@@ -373,8 +419,9 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
                     didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64,
                     totalBytesExpectedToWrite: Int64) {
-        guard totalBytesExpectedToWrite > 0 else { return }
-        onProgress(min(1, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)))
+        let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : fallbackTotal
+        guard total > 0 else { return }
+        onProgress(min(1, Double(totalBytesWritten) / Double(total)))
     }
 
     func urlSession(_ session: URLSession,
