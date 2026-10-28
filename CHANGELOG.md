@@ -8,6 +8,28 @@
 
 ---
 
+## [v3.6.0] - 2026-10-28
+
+### 测试
+- 验证包：与 v3.5.9 代码一致，仅版本号不同，用于验证「检查更新 → 下载 → 挂载安装 → 重启」整条链路是否打通
+- 若从 v3.5.9 点「下载并安装」能自动升到本版本并重启，说明私有仓库的 API 资产下载路径已恢复正常
+
+---
+
+## [v3.5.9] - 2026-10-28
+
+### 新增
+- 「关于与诊断 → 软件更新」下方新增**更新源**输入框：可直接改 `owner/repo`（支持粘贴整条仓库 URL，自动去掉 `https://github.com/`、`.git` 等），保存后立即生效、无需重新打包；「恢复默认」回到内置仓库。配置存 `UserDefaults` 的 `update_repo_slug`，留空即默认仓库
+
+### 修复
+- 应用内更新在**所有机器**上「能查到新版本、点下载就报『下载失败（GitHub 返回错误）』」：私有仓库的 `browser_download_url`（`github.com/.../releases/download/...`）是网页端地址，即使带上 PAT 也固定返回 404，`github.com` 不认 `Authorization` 头。改为走 API 资产地址 `api.github.com/repos/{owner}/{repo}/releases/assets/{id}` + `Accept: application/octet-stream`，GitHub 会 302 到签名 CDN，签名地址自带凭据、无需再带 token；网页地址保留为公开仓库兜底
+- 下载请求跨域跳转（`api.github.com` → `release-assets.githubusercontent.com`）时显式摘掉 `Authorization`，避免对象存储因「双重鉴权」拒绝
+- 下载失败提示带上 HTTP 状态码，并把失败详情写进 `~/.monohui-kit/logs/app.log`；失败态新增「在浏览器中手动下载」入口，供网络到不了 CDN 的机器兜底
+- 更新脚本改为「先挂载校验 → 解到临时目录 → 校验可执行文件存在 → 才删除旧版本」，任一步失败都会重新拉起旧版本；此前是先 `rm -rf` 再 `cp`，dmg 异常时会把用户的应用删掉。日志写到 `~/.monohui-kit/logs/update.log`
+- 更新目标改为当前运行中的 bundle 路径（不再硬编码 `/Applications/MonoHui-Kit.app`），从其他目录启动时也能正确替换
+
+---
+
 ## [v3.5.8] - 2026-10-27
 
 ### 修复

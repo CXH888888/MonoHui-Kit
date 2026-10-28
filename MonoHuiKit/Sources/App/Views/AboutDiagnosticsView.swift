@@ -1,7 +1,9 @@
 import SwiftUI
+import AppKit
 
 struct AboutDiagnosticsView: View {
     @State private var showDiagnostics = false
+    @State private var repoField = ""
 
     var body: some View {
         ScrollView {
@@ -103,6 +105,16 @@ struct AboutDiagnosticsView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Color.appleMuted)
                     }
+
+                    if case .failed = service.state {
+                        Button("在浏览器中手动下载") {
+                            NSWorkspace.shared.open(UpdateService.releasePageURL)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.appleBlue)
+                        .padding(.top, 2)
+                    }
                 }
                 Spacer()
 
@@ -116,7 +128,57 @@ struct AboutDiagnosticsView: View {
                     .stroke(Color.appleDivider, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            updateSourceRow
         }
+    }
+
+    /// 更新源可改：换仓库/换账号测试时不必重新打包
+    private var updateSourceRow: some View {
+        HStack(spacing: 8) {
+            Text("更新源")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.appleSoft)
+
+            TextField("owner/repo", text: $repoField)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(Color.appleInk)
+                .padding(.horizontal, 8)
+                .frame(width: 220, height: 26)
+                .background(Color.appleSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.appleDivider, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .onSubmit { saveRepoSlug() }
+
+            Button("保存") { saveRepoSlug() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.appleBlue)
+
+            Button("恢复默认") {
+                repoField = "\(UpdateService.defaultOwner)/\(UpdateService.defaultRepo)"
+                saveRepoSlug()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12))
+            .foregroundStyle(Color.appleMuted)
+
+            Spacer()
+
+            Text("支持粘贴仓库 URL，留空即默认")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.appleMuted)
+        }
+        .onAppear { repoField = UpdateService.repoSlug }
+    }
+
+    private func saveRepoSlug() {
+        UpdateService.shared.applyRepoSlug(repoField)
+        repoField = UpdateService.repoSlug
     }
 
     private var updateTitle: String {

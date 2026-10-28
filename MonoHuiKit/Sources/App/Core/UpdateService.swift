@@ -24,12 +24,77 @@ final class UpdateService {
 
     var state: State = .idle
 
-    private static let owner = "CXH888888"
-    private static let repo = "MonoHui-Kit"
     private static let volumeName = "MonoHui-Kit"
-    private static let appPath = "/Applications/MonoHui-Kit.app"
 
-    private var pendingAsset: (name: String, url: String)?
+    // MARK: - 更新源（可在「关于与诊断 → 软件更新」里改）
+
+    static let defaultOwner = "CXH888888"
+    static let defaultRepo = "MonoHui-Kit"
+    private static let repoSlugKey = "update_repo_slug"
+
+    /// 形如 `owner/repo`，留空即默认仓库
+    static var repoSlug: String {
+        get {
+            let saved = UserDefaults.standard.string(forKey: repoSlugKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return saved.isEmpty ? "\(defaultOwner)/\(defaultRepo)" : saved
+        }
+        set {
+            let slug = normalizeRepoSlug(newValue)
+            if slug.isEmpty || slug == "\(defaultOwner)/\(defaultRepo)" {
+                UserDefaults.standard.removeObject(forKey: repoSlugKey)
+            } else {
+                UserDefaults.standard.set(slug, forKey: repoSlugKey)
+            }
+        }
+    }
+
+    static var owner: String {
+        repoSlug.split(separator: "/").first.map(String.init) ?? defaultOwner
+    }
+
+    static var repo: String {
+        let parts = repoSlug.split(separator: "/")
+        return parts.count > 1 ? String(parts[1]) : defaultRepo
+    }
+
+    /// 容忍粘贴整条仓库 URL：`https://github.com/owner/repo.git` → `owner/repo`
+    static func normalizeRepoSlug(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["https://github.com/", "http://github.com/", "git@github.com:", "github.com/"] {
+            if s.lowercased().hasPrefix(prefix) {
+                s = String(s.dropFirst(prefix.count))
+            }
+        }
+        if s.lowercased().hasSuffix(".git") { s = String(s.dropLast(4)) }
+        while s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// 保存新的更新源；下次检查才会生效，已缓存的待下载信息作废
+    func applyRepoSlug(_ raw: String) {
+        Self.repoSlug = raw
+        pendingAsset = nil
+        state = .idle
+    }
+
+    /// 待下载的 dmg。
+    /// - `apiURL`：`https://api.github.com/.../releases/assets/{id}`，私有仓库唯一可用的下载入口，
+    ///   需要 `Accept: application/octet-stream` + PAT，GitHub 会 302 到签名 CDN 地址。
+    /// - `browserURL`：`https://github.com/.../releases/download/...`，浏览器用；私有仓库
+    ///   即使带上 PAT 也返回 404（github.com 的网页端不认 Authorization 头），只作兜底。
+    private var pendingAsset: PendingAsset?
+
+    private struct PendingAsset {
+        let name: String
+        let apiURL: String?
+        let browserURL: String
+    }
+
+    /// 手动下载兜底：网络到不了 CDN 时让用户走浏览器
+    static var releasePageURL: URL {
+        URL(string: "https://github.com/\(owner)/\(repo)/releases/latest")!
+    }
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
@@ -64,9 +129,14 @@ final class UpdateService {
                 return
             }
             guard http.statusCode == 200 else {
-                if http.statusCode == 404 {
-                    state = .failed("无法访问仓库（私有仓库需要 ~/.monohui-kit/github-token）")
-                } else {
+                switch http.statusCode {
+                case 404:
+                    state = .failed("无法访问仓库 \(Self.repoSlug)（私有仓库需要 ~/.monohui-kit/github-token）")
+                case 401:
+                    state = .failed("GitHub 凭据无效，请重新生成 token")
+                case 403:
+                    state = .failed("GitHub 拒绝访问（403，可能触发限流）")
+                default:
                     state = .failed("GitHub 返回 \(http.statusCode)")
                 }
                 return
@@ -81,7 +151,9 @@ final class UpdateService {
                 state = .failed("该 Release 没有附带 dmg")
                 return
             }
-            pendingAsset = (name: dmg.name, url: dmg.browserDownloadURL)
+            pendingAsset = PendingAsset(name: dmg.name,
+                                        apiURL: dmg.apiURL,
+                                        browserURL: dmg.browserDownloadURL)
             state = .available(release.tagName)
         } catch {
             state = .failed("网络错误：\(error.localizedDescription)")
@@ -102,46 +174,122 @@ final class UpdateService {
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
 
         Task {
-            do {
-                var request = URLRequest(url: URL(string: asset.url)!)
-                if let token = Self.githubToken() {
-                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                }
-                request.timeoutInterval = 300
+            defer { session.finishTasksAndInvalidate() }
 
-                let (tmpURL, response) = try await session.download(for: request)
-                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                    state = .failed("下载失败（GitHub 返回错误）")
+            // 依次尝试：API 资产地址（私有仓库唯一可用）→ 网页下载地址（公开仓库兜底）
+            // 只保留第一次失败的原因，避免兜底请求的 404 盖掉真正的诊断信息
+            var firstError: String?
+            func remember(_ message: String) { if firstError == nil { firstError = message } }
+
+            for request in Self.candidateRequests(for: asset) {
+                do {
+                    let (tmpURL, response) = try await session.download(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        remember("下载失败：服务器响应异常")
+                        continue
+                    }
+                    guard http.statusCode == 200 || http.statusCode == 206 else {
+                        let hint = http.statusCode == 404
+                            ? "，凭据失效或没有该 Release 的访问权限"
+                            : ""
+                        remember("下载失败（GitHub 返回 \(http.statusCode)\(hint)）")
+                        AppLog.shared.log("更新下载失败 HTTP \(http.statusCode) \(request.url?.absoluteString ?? "")",
+                                          category: "Update", level: .hot)
+                        continue
+                    }
+
+                    let size = (try? FileManager.default
+                        .attributesOfItem(atPath: tmpURL.path)[.size] as? Int64) ?? 0
+                    guard size > 1_000_000 else {
+                        remember("下载失败：文件不完整（\(size) 字节）")
+                        continue
+                    }
+
+                    let dmgPath = "/tmp/\(asset.name)"
+                    try? FileManager.default.removeItem(atPath: dmgPath)
+                    try FileManager.default.moveItem(at: tmpURL, to: URL(fileURLWithPath: dmgPath))
+
+                    AppLog.shared.log("更新包已下载：\(dmgPath)（\(size) 字节）",
+                                      category: "Update", level: .hot)
+                    state = .installing
+                    installAndRestart(dmgPath: dmgPath)
                     return
+                } catch {
+                    remember("下载失败：\(error.localizedDescription)")
+                    AppLog.shared.log("更新下载异常：\(error.localizedDescription)",
+                                      category: "Update", level: .hot)
                 }
-
-                let dmgPath = "/tmp/\(asset.name)"
-                try? FileManager.default.removeItem(atPath: dmgPath)
-                try FileManager.default.moveItem(at: tmpURL, to: URL(fileURLWithPath: dmgPath))
-
-                state = .installing
-                installAndRestart(dmgPath: dmgPath)
-            } catch {
-                state = .failed("下载失败：\(error.localizedDescription)")
             }
+            state = .failed(firstError ?? "下载失败")
         }
     }
 
-    /// 挂载新 dmg → 覆盖 /Applications → 重启。
+    /// 下载请求候选：API 资产地址优先，网页地址兜底
+    private static func candidateRequests(for asset: PendingAsset) -> [URLRequest] {
+        let token = githubToken()
+        var requests: [URLRequest] = []
+
+        if let api = asset.apiURL, let url = URL(string: api) {
+            var request = URLRequest(url: url)
+            request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            request.timeoutInterval = 300
+            requests.append(request)
+        }
+
+        if let url = URL(string: asset.browserURL) {
+            var request = URLRequest(url: url)
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            request.timeoutInterval = 300
+            requests.append(request)
+        }
+
+        return requests
+    }
+
+    /// 挂载新 dmg → 覆盖当前 App → 重启。
     /// 实际替换由独立脚本完成：本进程先退出，脚本等 1.5 秒再动手，
     /// 避免「自己删自己」时文件仍被占用。
+    /// 脚本按「先解到临时目录 → 校验通过 → 再替换」的顺序执行，
+    /// 任何一步失败都保留旧版本并重新拉起，不会把用户的应用删没。
     private func installAndRestart(dmgPath: String) {
+        let target = Bundle.main.bundlePath
         let script = """
         #!/bin/bash
+        LOG="$HOME/.monohui-kit/logs/update.log"
+        mkdir -p "$(dirname "$LOG")"
+        exec >>"$LOG" 2>&1
+        echo "=== $(date '+%Y-%m-%d %H:%M:%S') 开始更新 ==="
+
+        DMG="\(dmgPath)"
+        TARGET="\(target)"
+        SRC="/Volumes/\(Self.volumeName)/MonoHui-Kit.app"
+        STAGE="/Applications/.MonoHui-Kit.app.new"
+
+        fail() {
+            echo "失败：$1"
+            /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
+            /usr/bin/open "$TARGET"
+            exit 1
+        }
+
         sleep 1.5
         /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
-        /usr/bin/hdiutil attach "\(dmgPath)" -nobrowse -noautoopen >/dev/null
-        sleep 1
-        rm -rf "\(Self.appPath)"
-        cp -R "/Volumes/\(Self.volumeName)/MonoHui-Kit.app" "\(Self.appPath)"
+        /usr/bin/hdiutil attach "$DMG" -nobrowse -noautoopen >/dev/null || fail "挂载 dmg 失败"
+        [ -d "$SRC" ] || fail "dmg 内未找到 MonoHui-Kit.app"
+        [ -d "$SRC/Contents/MacOS/MonoHuiKit" ] || fail "dmg 内可执行文件缺失"
+
+        rm -rf "$STAGE"
+        /bin/cp -R "$SRC" "$STAGE" || fail "拷贝到临时目录失败"
+        /usr/bin/xattr -dr com.apple.quarantine "$STAGE" >/dev/null 2>&1
+
+        rm -rf "$TARGET" || fail "删除旧版本失败"
+        /bin/mv "$STAGE" "$TARGET" || fail "替换失败"
+
         /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
-        rm -f "\(dmgPath)"
-        /usr/bin/open "\(Self.appPath)"
+        rm -f "$DMG"
+        echo "完成：$TARGET"
+        /usr/bin/open "$TARGET"
         """
         let scriptPath = "/tmp/monohui-updater.sh"
         do {
@@ -200,10 +348,12 @@ private struct GitHubRelease: Decodable {
 
     struct Asset: Decodable {
         let name: String
+        let apiURL: String?
         let browserDownloadURL: String
 
         enum CodingKeys: String, CodingKey {
             case name
+            case apiURL = "url"
             case browserDownloadURL = "browser_download_url"
         }
     }
@@ -230,4 +380,18 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     func urlSession(_ session: URLSession,
                     downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {}
+
+    /// GitHub 的资产下载会 302 跳到 `release-assets.githubusercontent.com` 的签名地址。
+    /// 签名地址自带凭据，跨域再带 Authorization 会被对象存储拒绝，这里显式摘掉。
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        var redirected = request
+        if redirected.url?.host != task.originalRequest?.url?.host {
+            redirected.setValue(nil, forHTTPHeaderField: "Authorization")
+        }
+        completionHandler(redirected)
+    }
 }
