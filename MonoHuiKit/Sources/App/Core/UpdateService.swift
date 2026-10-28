@@ -259,6 +259,7 @@ final class UpdateService {
     /// 避免「自己删自己」时文件仍被占用。
     /// 脚本按「先解到临时目录 → 校验通过 → 再替换」的顺序执行，
     /// 任何一步失败都保留旧版本并重新拉起，不会把用户的应用删没。
+    /// 收尾：安装包 dmg 删除；旧版本备份移入废纸篓（不 rm，避开批量删除保护）。
     private func installAndRestart(dmgPath: String) {
         let target = Bundle.main.bundlePath
         let script = """
@@ -275,15 +276,36 @@ final class UpdateService {
         BACKUP="$(dirname "$TARGET")/.MonoHui-Kit.app.previous"
         MOUNT=""
 
+        # App 包有 70+ 个文件，直接 rm -rf 会撞上本机「批量删除需确认」的保护而被静默拦下，
+        # 白占 40MB。先试直接删，删不掉再移进废纸篓（并去掉前导点，否则在 Finder 里是隐藏文件）。
+        purge() {
+            [ -e "$1" ] || return 0
+            /bin/rm -rf "$1" 2>/dev/null
+            [ -e "$1" ] || return 0
+            local name
+            name="$(basename "$1")"
+            name="${name#.}"
+            /bin/mv "$1" "$HOME/.Trash/$name.$(date +%Y%m%d-%H%M%S)" 2>/dev/null
+        }
+
         fail() {
             echo "失败：$1"
             printf '%s' "$1" > "$MARK"
             [ -n "$MOUNT" ] && /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
+            purge "$STAGE"
             /usr/bin/open "$TARGET" >/dev/null 2>&1
             exit 1
         }
 
         sleep 1.5
+
+        # 清掉以前失败遗留的安装包（当前这次要用的保留）
+        for old in /tmp/MonoHui-Kit-v*.dmg; do
+            [ -e "$old" ] || continue
+            [ "$old" = "$DMG" ] && continue
+            /bin/rm -f "$old"
+        done
+
         /usr/bin/hdiutil detach "/Volumes/\(Self.volumeName)" -force >/dev/null 2>&1
 
         # 卷名被占用时 hdiutil 会挂到 "MonoHui-Kit 1"，所以从输出里取真实挂载点
@@ -296,18 +318,18 @@ final class UpdateService {
         [ -d "$SRC" ] || fail "dmg 内未找到 MonoHui-Kit.app"
         [ -f "$SRC/Contents/MacOS/MonoHuiKit" ] || fail "dmg 内可执行文件缺失"
 
-        rm -rf "$STAGE"
+        purge "$STAGE"
         /bin/cp -R "$SRC" "$STAGE" || fail "拷贝到临时目录失败"
         /usr/bin/xattr -dr com.apple.quarantine "$STAGE" >/dev/null 2>&1
 
-        # 旧版本先改名保留，替换成功后才删；任何一步失败都能回滚
-        rm -rf "$BACKUP"
+        # 旧版本先改名保留，替换成功后才清理；任何一步失败都能回滚
+        purge "$BACKUP"
         /bin/mv "$TARGET" "$BACKUP" || fail "移走旧版本失败"
         if ! /bin/mv "$STAGE" "$TARGET"; then
             /bin/mv "$BACKUP" "$TARGET" >/dev/null 2>&1
             fail "替换失败，已回滚"
         fi
-        rm -rf "$BACKUP"
+        purge "$BACKUP"
 
         /usr/bin/hdiutil detach "$MOUNT" -force >/dev/null 2>&1
         rm -f "$DMG" "$MARK"
