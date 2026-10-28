@@ -37,7 +37,7 @@ struct InteractivePopover: View {
                 window.isMovableByWindowBackground = true
                 FinderSelection.positionWindowNearFinder(window)
                 window.level = .screenSaver
-                window.makeKeyAndOrderFront(nil)
+                Motion.present(window)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
@@ -146,7 +146,7 @@ struct InteractivePopover: View {
                     Capsule()
                         .fill(Color.appleBlue)
                         .frame(width: max(0, geo.size.width * (progress?.fraction ?? 0)))
-                        .animation(.easeOut(duration: 0.2), value: progress?.fraction ?? 0)
+                        .animation(Motion.progress, value: progress?.fraction ?? 0)
                 }
             }
             .frame(height: 4)

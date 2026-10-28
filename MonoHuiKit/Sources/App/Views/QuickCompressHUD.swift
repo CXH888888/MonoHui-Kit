@@ -76,7 +76,7 @@ struct CompressHUDView: View {
                     Capsule()
                         .fill(model.failedCount > 0 && model.phase == .finished ? Color.orange : Color.appleBlue)
                         .frame(width: max(0, geo.size.width * model.fraction))
-                        .animation(.easeOut(duration: 0.18), value: model.fraction)
+                        .animation(Motion.progress, value: model.fraction)
                 }
             }
             .frame(height: 4)
@@ -184,7 +184,8 @@ final class QuickCompressHUDController {
         self.cancelHandler = nil
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
+                context.duration = Motion.caDuration(Motion.Duration.exit)
+                context.timingFunction = Motion.caExit
                 panel.animator().alphaValue = 0
             } completionHandler: {
                 panel.orderOut(nil)

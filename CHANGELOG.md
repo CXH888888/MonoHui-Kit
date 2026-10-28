@@ -8,6 +8,19 @@
 
 ---
 
+## [v3.6.4] - 2026-10-28
+
+### 变更
+- **动效统一入库**：新增 `Core/Motion.swift`，把设计规范 `foundations/motion.html` 的令牌原样落地——时长 instant 120 / fast 160 / exit 180 / standard 240 / considered 480；缓动 standard `(.22,1,.36,1)`、enter `(.16,1,.3,1)`、exit `(.7,0,.84,0)`、in-out `(.65,0,.35,1)`；弹簧 snappy / smooth / morph / responsive / gentle；错峰 char 16 / word 40 / line 80 / item 35（封顶 240）；模糊 2 / 4 / 8
+- 全项目 46 处裸数字动画改为令牌（14 个文件），AppKit 侧的 13 处 `NSAnimationContext` 也统一走 `Motion.Duration.*` + `Motion.ca*` 曲线
+- 弹窗入场不再硬切：4 个 Popover 从 `makeKeyAndOrderFront` 直接弹出改为 standard 240ms + ease.enter 淡入（`Motion.present`），窗口本来就可见时不重复淡入
+- 过渡缩放收敛：`transition(.scale)` 默认 0.5 收到 0.96，书架列表项 0.8 收到 0.92——符合规范「小且短暂」的取向
+- 书架面板滑入/滑出从 0.35s 收到 standard 240ms（入场 ease.enter）/ exit 180ms（退场 ease.exit），最小化、peek、跨屏迁移同步对齐
+- 进度条改线性短过渡（`Motion.progress`，120ms linear），避免逐帧缓动造成的滞后
+- 支持系统「减弱动态效果」：所有 `Motion.*` 令牌在开启时返回 nil（AppKit 侧时长坍缩为 0），保留终态、去掉位移与模糊
+
+---
+
 ## [v3.6.3] - 2026-10-28
 
 ### 变更

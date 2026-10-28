@@ -408,9 +408,9 @@ struct HotKeySettingsView: View {
     }
 
     private func showToast(_ message: String, error: Bool) {
-        withAnimation { toastMessage = message; toastIsError = error }
+        withAnimation(Motion.enter) { toastMessage = message; toastIsError = error }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation { toastMessage = nil }
+            withAnimation(Motion.leave) { toastMessage = nil }
         }
     }
 }

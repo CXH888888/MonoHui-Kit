@@ -49,7 +49,7 @@ struct ShelfView: View {
                 ForEach(store.items) { item in
                     ShelfItemView(item: item, store: store)
                         .transition(
-                            .scale(scale: 0.8).combined(with: .opacity)
+                            .scale(scale: 0.92).combined(with: .opacity)
                         )
                 }
             }
@@ -68,7 +68,7 @@ struct ShelfView: View {
                 .frame(height: 14)
                 .allowsHitTesting(false)
                 .opacity(showListTopFade ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: showListTopFade)
+                .animation(Motion.easeInstant, value: showListTopFade)
         }
         // 底部渐变遮罩：下方还有未看完的内容时浮现，提示可继续滚动
         .overlay(alignment: .bottom) {
@@ -76,7 +76,7 @@ struct ShelfView: View {
                 .frame(height: 14)
                 .allowsHitTesting(false)
                 .opacity(showListBottomFade ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: showListBottomFade)
+                .animation(Motion.easeInstant, value: showListBottomFade)
         }
     }
 
@@ -168,9 +168,9 @@ struct ShelfView: View {
                 }
             )
         )
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: store.items.count)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: store.items.map(\.id))
-        .animation(.easeInOut(duration: 0.2), value: store.selectedIds.count)
+        .animation(Motion.smooth, value: store.items.count)
+        .animation(Motion.snappy, value: store.items.map(\.id))
+        .animation(Motion.move, value: store.selectedIds.count)
         // 自定义清空确认小弹窗（覆盖在面板内，不弹大窗口）
         .overlay {
             if showClearConfirm {
@@ -178,7 +178,7 @@ struct ShelfView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showClearConfirm)
+        .animation(Motion.move, value: showClearConfirm)
         // 重命名弹窗：独立 NSPanel，贴在暂存箱右侧外部显示（不用 overlay，避免被窗口裁剪）
         .onChange(of: showRename) { _, newValue in
             handleRenameChange(newValue)
@@ -236,7 +236,7 @@ struct ShelfView: View {
             object: nil,
             queue: .main
         ) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(Motion.move) {
                 isShelfMinimized = ShelfPanelController.shared.isMinimized
             }
         }
@@ -261,7 +261,7 @@ struct ShelfView: View {
                 .foregroundStyle(Color.white.opacity(0.6))
             HStack(spacing: 6) {
                 Button("取消") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(Motion.move) {
                         showClearConfirm = false
                     }
                 }
@@ -273,7 +273,7 @@ struct ShelfView: View {
                 .buttonStyle(.plain)
 
                 Button("清空") {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(Motion.move) {
                         store.clearUnlocked()
                         showClearConfirm = false
                     }
@@ -352,7 +352,7 @@ struct ShelfView: View {
         // Esc：关闭预览 / 关闭清空确认
         if event.keyCode == 53 {
             if showClearConfirm {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(Motion.move) {
                     showClearConfirm = false
                 }
             }
@@ -432,7 +432,7 @@ struct ShelfView: View {
                     )
                 )
         )
-        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        .animation(Motion.moveFast, value: isDropTargeted)
     }
 
     private var headerView: some View {
@@ -451,7 +451,7 @@ struct ShelfView: View {
                 .background(countColor)
                 .clipShape(Capsule())
                 .scaleEffect(store.items.isEmpty ? 1 : 1)
-                .animation(.spring(response: 0.2, dampingFraction: 0.7), value: store.items.count)
+                .animation(Motion.snappy, value: store.items.count)
 
             Spacer()
 
@@ -647,7 +647,7 @@ struct ShelfView: View {
                 )
         )
         .scaleEffect(isAirDropTargeted ? 1.03 : 1)
-        .animation(.easeInOut(duration: 0.2), value: isAirDropTargeted)
+        .animation(Motion.move, value: isAirDropTargeted)
         .overlay {
             // 用 NSViewRepresentable 包装的拖放接收视图，比 SwiftUI onDrop 在 nonactivatingPanel 上可靠
             ShelfDropTargetView(
@@ -687,7 +687,7 @@ struct ShelfView: View {
                 )
         )
         .scaleEffect(isCompressTargeted ? 1.03 : 1)
-        .animation(.easeInOut(duration: 0.2), value: isCompressTargeted)
+        .animation(Motion.move, value: isCompressTargeted)
         .overlay {
             ShelfDropTargetView(
                 isTargeted: $isCompressTargeted,

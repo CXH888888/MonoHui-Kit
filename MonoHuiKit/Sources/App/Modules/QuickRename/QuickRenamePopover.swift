@@ -418,7 +418,7 @@ struct QuickRenamePopover: View {
             window.contentMaxSize = NSSize(width: 480, height: 1200)
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
-            window.makeKeyAndOrderFront(nil)
+            Motion.present(window)
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -684,7 +684,7 @@ struct QuickRenamePopover: View {
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelLeftFade ? 1 : 0)
-                        .animation(.easeOut(duration: 0.12), value: channelLeftFade)
+                        .animation(Motion.easeInstant, value: channelLeftFade)
                 }
                 // 右渐变：右侧还有未看完的内容时浮现，提示可滚动
                 .overlay(alignment: .trailing) {
@@ -692,7 +692,7 @@ struct QuickRenamePopover: View {
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelRightFade ? 1 : 0)
-                        .animation(.easeOut(duration: 0.12), value: channelRightFade)
+                        .animation(Motion.easeInstant, value: channelRightFade)
                 }
             }
         }
@@ -733,7 +733,7 @@ struct QuickRenamePopover: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale))
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
         .contentShape(Rectangle())
@@ -741,7 +741,7 @@ struct QuickRenamePopover: View {
             toggleChannel(ch)
         }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(Motion.moveFast) {
                 hoveringChannel = hovering ? ch : nil
             }
         }
@@ -933,7 +933,7 @@ struct QuickRenamePopover: View {
                     .frame(height: Self.statusGridFadeHeight)
                     .allowsHitTesting(false)
                     .opacity(statusTopFade ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: statusTopFade)
+                    .animation(Motion.easeInstant, value: statusTopFade)
             }
             // 底部渐变：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
             .overlay(alignment: .bottom) {
@@ -941,7 +941,7 @@ struct QuickRenamePopover: View {
                     .frame(height: Self.statusGridFadeHeight)
                     .allowsHitTesting(false)
                     .opacity(statusBottomFade ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: statusBottomFade)
+                    .animation(Motion.easeInstant, value: statusBottomFade)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
@@ -1082,7 +1082,7 @@ struct QuickRenamePopover: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .transition(.opacity.combined(with: .scale))
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
                 .contentShape(Rectangle())
@@ -1096,7 +1096,7 @@ struct QuickRenamePopover: View {
                     }
                 }
                 .onHover { hovering in
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(Motion.moveFast) {
                         hoveringStatus = hovering ? st : nil
                     }
                 }

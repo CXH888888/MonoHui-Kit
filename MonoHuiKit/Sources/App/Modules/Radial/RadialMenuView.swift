@@ -69,10 +69,9 @@ struct RadialMenuView: View {
         // 整体缩放会让内容在固定的玻璃盘上滑动。展开动效交给各扇区自己播放。
         .opacity(model.isShown ? 1 : 0)
         .scaleEffect(model.isShown ? 1 : 0.96)
-        .animation(isPreview ? nil : (model.isShown
-                                      ? .easeOut(duration: 0.24)
-                                      : .easeIn(duration: 0.18)), value: model.isShown)
-        .animation(.easeOut(duration: 0.13), value: model.selection)
+        .animation(isPreview ? nil : (model.isShown ? Motion.enter : Motion.leave),
+                   value: model.isShown)
+        .animation(Motion.easeInstant, value: model.selection)
     }
 
     // MARK: - 毛玻璃底座
@@ -138,13 +137,13 @@ struct RadialMenuView: View {
 
     /// 依次展开：从正上方向两侧对称铺开（先上，再右上/左上，再右/左…），最后收在正下方。
     /// 纯顺时针排队会让末尾停在左上，看起来像绕了一圈没闭合。
-    private func revealAnimation(index: Int) -> Animation {
-        guard model.isShown else { return .easeIn(duration: 0.16) }
+    /// 错峰步长取规范 `stagger.item`（35ms），并封顶 240ms；退场用统一的 exit 曲线。
+    private func revealAnimation(index: Int) -> Animation? {
+        guard model.isShown else { return Motion.leave }
         let count = max(1, model.actions.count)
         let distance = min(index, count - index)
-        // damping 0.84：比之前少一点回弹，连续弹 8 片时不会显得晃
-        return .spring(response: 0.38, dampingFraction: 0.84)
-            .delay(Double(distance) * 0.024)
+        guard let base = Motion.snappy else { return nil }
+        return base.delay(Motion.Stagger.delay(distance))
     }
 
     private var ring: some View {
@@ -165,7 +164,7 @@ struct RadialMenuView: View {
                     .scaleEffect(model.isShown ? 1 : 0.88)
                     .opacity(model.isShown ? 1 : 0)
                     .animation(revealAnimation(index: index), value: model.isShown)
-                    .animation(.easeOut(duration: 0.12), value: model.selection)
+                    .animation(Motion.easeInstant, value: model.selection)
 
                 iconContent(index: index, action: action, isSelected: isSelected)
                     .scaleEffect(model.isShown ? 1 : 0.7)
@@ -199,8 +198,8 @@ struct RadialMenuView: View {
     }
 
     /// 环带描边与分隔线的入场/退场曲线，跟扇区同一节奏但不排队
-    private var ringReveal: Animation {
-        model.isShown ? .easeOut(duration: 0.26) : .easeIn(duration: 0.16)
+    private var ringReveal: Animation? {
+        model.isShown ? Motion.enter : Motion.leave
     }
 
     /// 扇区分隔线：比留缝更精致，环仍然是完整的一圈玻璃
@@ -286,7 +285,7 @@ struct RadialMenuView: View {
             .frame(width: metrics.innerRadius * 2 - size * 0.106)
             .multilineTextAlignment(.center)
             .scaleEffect(model.selection == nil ? 1 : 1.03)
-            .animation(.easeInOut(duration: 0.18), value: model.selection)
+            .animation(Motion.moveFast, value: model.selection)
         }
         .scaleEffect(model.isShown ? 1 : 0.92)
         .opacity(model.isShown ? 1 : 0)

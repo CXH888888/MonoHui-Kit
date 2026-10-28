@@ -94,7 +94,7 @@ struct ShelfItemView: View {
                         store.selectSingle(id: item.id)
                     }
                 } onHover: { hovering in
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    withAnimation(Motion.moveFast) {
                         isHovered = hovering
                     }
                 }

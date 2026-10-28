@@ -456,7 +456,7 @@ struct QuickRenameBatchPopover: View {
             window.contentMaxSize = NSSize(width: 560, height: 1200)
             FinderSelection.positionWindowNearFinder(window)
             window.level = .screenSaver
-            window.makeKeyAndOrderFront(nil)
+            Motion.present(window)
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -754,7 +754,7 @@ struct QuickRenameBatchPopover: View {
                 .frame(height: editorFadeHeight)
                 .allowsHitTesting(false)
                 .opacity(geom.offset > 1 ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: geom.offset > 1)
+                .animation(Motion.easeInstant, value: geom.offset > 1)
         }
         // 底部渐变遮罩：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
         .overlay(alignment: .bottom) {
@@ -762,7 +762,7 @@ struct QuickRenameBatchPopover: View {
                 .frame(height: editorFadeHeight)
                 .allowsHitTesting(false)
                 .opacity(showEditorBottomFade(geom) ? 1 : 0)
-                .animation(.easeOut(duration: 0.12), value: showEditorBottomFade(geom))
+                .animation(Motion.easeInstant, value: showEditorBottomFade(geom))
         }
     }
 
@@ -877,7 +877,7 @@ struct QuickRenameBatchPopover: View {
                 .fill(isUnify ? Color.appleBlue : Color.orange)
                 .frame(width: sliderWidth, height: capsuleHeight - 4)
                 .offset(x: sliderOffset, y: 2)
-                .animation(.easeInOut(duration: 0.22), value: config.mode)
+                .animation(Motion.move, value: config.mode)
 
             // 文字层（均分两半，与滑块对齐）
             HStack(spacing: 0) {
@@ -1104,7 +1104,7 @@ struct QuickRenameBatchPopover: View {
                     .frame(height: 14)
                     .allowsHitTesting(false)
                     .opacity(showPreviewTopFade ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: showPreviewTopFade)
+                    .animation(Motion.easeInstant, value: showPreviewTopFade)
             }
             // 底部渐变遮罩：下方还有内容时浮现，提示可滚动
             .overlay(alignment: .bottom) {
@@ -1112,7 +1112,7 @@ struct QuickRenameBatchPopover: View {
                     .frame(height: 14)
                     .allowsHitTesting(false)
                     .opacity(showPreviewBottomFade ? 1 : 0)
-                    .animation(.easeOut(duration: 0.12), value: showPreviewBottomFade)
+                    .animation(Motion.easeInstant, value: showPreviewBottomFade)
             }
             // 自绘细滚动条：贴右侧边缘；仅滚动期间显示，停止 0.9s 后淡出（macOS 覆盖式滚动条行为）
             .overlay(alignment: .trailing) {
@@ -1137,10 +1137,10 @@ struct QuickRenameBatchPopover: View {
                 .opacity(previewOverflow && scrollbarVisible ? 1 : 0)
             }
             .onChange(of: previewScrollGeom.offset) { _, _ in
-                withAnimation(.easeOut(duration: 0.15)) { scrollbarVisible = true }
+                withAnimation(Motion.easeFast) { scrollbarVisible = true }
                 scrollbarHideTask?.cancel()
                 let task = DispatchWorkItem {
-                    withAnimation(.easeOut(duration: 0.35)) { scrollbarVisible = false }
+                    withAnimation(Motion.easeStandard) { scrollbarVisible = false }
                 }
                 scrollbarHideTask = task
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.9, execute: task)
@@ -1440,7 +1440,7 @@ struct QuickRenameBatchPopover: View {
         .contentShape(Rectangle())
         .onTapGesture { toggleChannel(ch) }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(Motion.moveFast) {
                 hoveringChannel = hovering ? ch : nil
             }
         }
@@ -1587,7 +1587,7 @@ struct QuickRenameBatchPopover: View {
         .contentShape(Rectangle())
         .onTapGesture { status = (status == st) ? "" : st }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(Motion.moveFast) {
                 hoveringStatus = hovering ? st : nil
             }
         }

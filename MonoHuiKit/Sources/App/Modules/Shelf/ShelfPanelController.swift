@@ -310,8 +310,8 @@ final class ShelfPanelController {
         // 再用动画从隐藏位置滑出到显示位置，同步淡入
         if animated {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.35
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                ctx.duration = Motion.Duration.standard
+                ctx.timingFunction = Motion.caEnter
                 panel.animator().setFrame(targetFrame, display: true)
                 panel.animator().alphaValue = 1
             }
@@ -355,8 +355,8 @@ final class ShelfPanelController {
         if animated {
             let token = hideAnimationToken
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.35
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                ctx.duration = Motion.Duration.exit
+                ctx.timingFunction = Motion.caExit
                 panel.animator().setFrame(hiddenFrame, display: true)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
@@ -437,8 +437,8 @@ final class ShelfPanelController {
         // 主 panel 向左滑出屏幕（mask 同步机制裁剪跨屏部分，不淡出 alpha 让滑动可见）
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.35
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+            ctx.duration = Motion.Duration.exit
+            ctx.timingFunction = Motion.caExit
             panel.animator().setFrame(hiddenFrame, display: true)
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
@@ -519,8 +519,8 @@ final class ShelfPanelController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         isShown = true
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.35
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+            ctx.duration = Motion.Duration.standard
+            ctx.timingFunction = Motion.caEnter
             panel.animator().setFrame(targetFrame, display: true)
             panel.animator().alphaValue = 1
         }
@@ -548,8 +548,8 @@ final class ShelfPanelController {
 
         // 主 panel 向左滑出屏幕（mask 同步机制裁剪跨屏部分，不淡出 alpha 让滑动可见）
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.35
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+            ctx.duration = Motion.Duration.exit
+            ctx.timingFunction = Motion.caExit
             panel.animator().setFrame(hiddenFrame, display: true)
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
@@ -577,8 +577,8 @@ final class ShelfPanelController {
                 let oldHeight = panel.frame.height
                 let oldHiddenFrame = calcHiddenFrame(for: oldScreen, height: oldHeight)
                 NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.25
-                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                    ctx.duration = Motion.Duration.exit
+                    ctx.timingFunction = Motion.caExit
                     panel.animator().setFrame(oldHiddenFrame, display: true)
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
@@ -594,8 +594,8 @@ final class ShelfPanelController {
                         panel.orderFrontRegardless()
                         let targetFrame = NSRect(x: screenFrame.origin.x, y: y, width: self.panelWidth, height: height)
                         NSAnimationContext.runAnimationGroup { ctx in
-                            ctx.duration = 0.35
-                            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                            ctx.duration = Motion.Duration.standard
+                            ctx.timingFunction = Motion.caEnter
                             panel.animator().setFrame(targetFrame, display: true)
                         }
                     }
@@ -615,8 +615,8 @@ final class ShelfPanelController {
                 let oldHeight = barPanel.frame.height
                 let oldHiddenFrame = calcMinimizedHiddenFrame(for: oldScreen, height: oldHeight)
                 NSAnimationContext.runAnimationGroup({ ctx in
-                    ctx.duration = 0.25
-                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                    ctx.duration = Motion.Duration.exit
+                    ctx.timingFunction = Motion.caExit
                     barPanel.animator().setFrame(oldHiddenFrame, display: true)
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
@@ -632,8 +632,8 @@ final class ShelfPanelController {
                         barPanel.orderFrontRegardless()
                         let barFrame = NSRect(x: screenFrame.origin.x, y: y, width: self.minimizedBarWidth, height: height)
                         NSAnimationContext.runAnimationGroup { ctx in
-                            ctx.duration = 0.35
-                            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                            ctx.duration = Motion.Duration.standard
+                            ctx.timingFunction = Motion.caEnter
                             barPanel.animator().setFrame(barFrame, display: true)
                         }
                     }
@@ -839,13 +839,13 @@ final class ShelfPanelController {
             let oldHiddenFrame = calcHiddenFrame(for: oldScreen, height: oldHeight)
 
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                ctx.duration = Motion.Duration.exit
+                ctx.timingFunction = Motion.caExit
                 panel.animator().alphaValue = 0
             }
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.25
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                ctx.duration = Motion.Duration.exit
+                ctx.timingFunction = Motion.caExit
                 panel.animator().setFrame(oldHiddenFrame, display: true)
             }, completionHandler: { [weak self] in
                 DispatchQueue.main.async {
@@ -862,8 +862,8 @@ final class ShelfPanelController {
                     panel.orderFrontRegardless()
                     // Phase 3：新屏滑入出现（同步淡入）
                     NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = 0.35
-                        ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                        ctx.duration = Motion.Duration.standard
+                        ctx.timingFunction = Motion.caEnter
                         panel.animator().setFrame(targetFrame, display: true)
                         panel.animator().alphaValue = 1
                     }
@@ -883,8 +883,8 @@ final class ShelfPanelController {
             CATransaction.commit()
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.35
-                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+                ctx.duration = Motion.Duration.standard
+                ctx.timingFunction = Motion.caEnter
                 panel.animator().setFrame(targetFrame, display: true)
                 panel.animator().alphaValue = 1
             }

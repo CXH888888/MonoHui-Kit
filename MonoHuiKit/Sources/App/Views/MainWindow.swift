@@ -457,7 +457,7 @@ struct MainWindow: View {
                     Capsule()
                         .fill(Color.appleBlue)
                         .frame(width: max(0, geo.size.width * (progress?.fraction ?? 0)))
-                        .animation(.easeOut(duration: 0.2), value: progress?.fraction ?? 0)
+                        .animation(Motion.progress, value: progress?.fraction ?? 0)
                 }
             }
             .frame(height: 4)

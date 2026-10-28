@@ -170,7 +170,7 @@ struct DateFolderPopover: View {
                 window.isMovableByWindowBackground = true
                 FinderSelection.positionWindowNearFinder(window)
                 window.level = .screenSaver
-                window.makeKeyAndOrderFront(nil)
+                Motion.present(window)
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
@@ -391,7 +391,7 @@ struct DateFolderPopover: View {
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelLeftFade ? 1 : 0)
-                        .animation(.easeOut(duration: 0.12), value: channelLeftFade)
+                        .animation(Motion.easeInstant, value: channelLeftFade)
                 }
                 // 右渐变：右侧还有未看完的内容时浮现
                 .overlay(alignment: .trailing) {
@@ -399,7 +399,7 @@ struct DateFolderPopover: View {
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelRightFade ? 1 : 0)
-                        .animation(.easeOut(duration: 0.12), value: channelRightFade)
+                        .animation(Motion.easeInstant, value: channelRightFade)
                 }
             }
         }
@@ -440,7 +440,7 @@ struct DateFolderPopover: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .scale))
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
         .contentShape(Rectangle())
@@ -448,7 +448,7 @@ struct DateFolderPopover: View {
             toggleChannel(ch)
         }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
+            withAnimation(Motion.moveFast) {
                 hoveringChannel = hovering ? ch : nil
             }
         }
