@@ -276,9 +276,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 || (module == "datefolder" && moduleArgs["mode"] == "interactive")
             if isInteractive {
                 if launchedByService {
-                    // 服务菜单新进程：主窗口就是弹窗（ContentView 根据 module 显示弹窗视图），无 identifier
-                    // 直接把所有窗口设成 screenSaver
-                    for window in NSApplication.shared.windows {
+                    // 服务菜单新进程：主窗口就是弹窗（ContentView 根据 module 显示弹窗视图），无 identifier。
+                    // 这里只能抬一类窗口：优先独立弹窗窗口，没有才动主窗口——
+                    // 之前无条件遍历所有窗口，会把「独立弹窗 + 主窗口」一起抬成 screenSaver，看起来就是两个弹窗。
+                    let popups = NSApplication.shared.windows.filter {
+                        $0.identifier?.rawValue == "InteractivePopup"
+                    }
+                    let targets = popups.isEmpty
+                        ? NSApplication.shared.windows.filter { $0.level == .normal }
+                        : popups
+                    for window in targets {
                         window.center()
                         window.level = .screenSaver
                         window.makeKeyAndOrderFront(nil)

@@ -436,6 +436,16 @@ final class HotKeyDispatcher {
             window.makeKeyAndOrderFront(nil)
         }
         AppLog.shared.log("独立窗口已显示 level=screenSaver（未切 activationPolicy）", category: "Dispatcher", level: .success)
+
+        // 诊断：把此刻所有窗口的标识/层级/尺寸/可见性打进日志。
+        // 「唤起两个弹窗」只能靠这个定位——是残留的旧弹窗，还是主窗口被一起抬起来了。
+        let snapshot = NSApp.windows.map { w -> String in
+            let id = w.identifier?.rawValue ?? "main"
+            let size = "\(Int(w.frame.width))x\(Int(w.frame.height))"
+            return "\(id)|L\(w.level.rawValue)|\(size)|\(w.isVisible ? "V" : "H")|a\(String(format: "%.2f", w.alphaValue))"
+        }
+        AppLog.shared.log("窗口快照[\(snapshot.count)] \(snapshot.joined(separator: " , "))",
+                          category: "Dispatcher")
     }
 }
 
