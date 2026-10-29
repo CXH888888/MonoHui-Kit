@@ -395,16 +395,9 @@ final class HotKeyDispatcher {
             stale.close()
         }
 
-        // 弹窗是「即用即走」的：先把主窗口收起来，保证屏幕上只有一块弹窗。
-        // 之前主窗口一直留在原地，弹窗淡入后看着就是两个窗口。
-        let mainWindows = NSApp.windows.filter { $0.level == .normal && $0.isVisible }
-        if !mainWindows.isEmpty {
-            for window in mainWindows { window.orderOut(nil) }
-            if NSApp.activationPolicy() == .regular {
-                NSApp.setActivationPolicy(.accessory)
-            }
-            AppLog.shared.log("弹窗显示前收起主窗口 \(mainWindows.count) 个", category: "Dispatcher")
-        }
+        // 不收起主窗口：用户可能正开着设置界面，弹窗只是叠在上面。
+        // （之前为了消除「两个窗口」把它 orderOut 了，但真因是旧弹窗被 onAppear 复活，
+        //   现在那个已经修掉，没必要再动用户的窗口，也不该切 activationPolicy 把 Dock 图标藏了。）
 
         // 记录前台 App（必须在 NSApp.activate 之前）
         Self.previousFrontmost = NSWorkspace.shared.frontmostApplication
