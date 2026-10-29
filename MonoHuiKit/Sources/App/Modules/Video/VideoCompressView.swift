@@ -107,7 +107,7 @@ struct VideoCompressView: View {
                 }
                 addRow
             }
-            .padding(20)
+            .padding(24)
         }
     }
 
@@ -238,8 +238,8 @@ struct VideoCompressView: View {
                 .foregroundStyle(Color.appleBlue)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
         .background(Color.appleSurface)
     }
 
@@ -320,7 +320,7 @@ struct VideoCompressView: View {
                 .disabled(isCompressing || items.isEmpty)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 24)
         .padding(.vertical, 12)
         .background(Color.appleSurface)
     }

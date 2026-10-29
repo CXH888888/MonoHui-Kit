@@ -126,7 +126,7 @@ struct MainWindow: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 22)
                     .frame(height: 32)
                     .background(Color.appleBlue)
                     .clipShape(RoundedRectangle(cornerRadius: 980))
@@ -326,7 +326,7 @@ struct MainWindow: View {
                     .foregroundStyle(Color.appleBlue)
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 24)
             .padding(.top, 10)
             .padding(.bottom, 6)
 
@@ -334,7 +334,7 @@ struct MainWindow: View {
                 Text("全部文件压缩成功")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.appleSoft)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     .padding(.bottom, 10)
             } else {
                 ScrollView {
@@ -353,7 +353,7 @@ struct MainWindow: View {
                                     .lineLimit(2)
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 24)
                             .padding(.vertical, 3)
                         }
                     }
@@ -444,7 +444,7 @@ struct MainWindow: View {
                 .disabled(isCompressing || imageItems.isEmpty)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 24)
         .padding(.vertical, 12)
         .background(Color.appleSurface)
     }

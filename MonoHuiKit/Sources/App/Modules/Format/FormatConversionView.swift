@@ -249,7 +249,7 @@ struct FormatConversionView: View {
                 .disabled(isConverting || items.isEmpty)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 24)
         .padding(.vertical, 12)
         .background(Color.appleSurface)
     }
