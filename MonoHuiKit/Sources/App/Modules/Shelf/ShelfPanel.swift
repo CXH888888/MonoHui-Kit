@@ -28,7 +28,7 @@ class ShelfClipPanel: NSPanel {
         updateClipMask()
     }
 
-    /// panel 显示时启动 mask 同步（覆盖动画期间），隐藏时停止
+    /// panel 显示时启动 mask 同步（只覆盖动画那段时间），隐藏时停止
     override func orderFrontRegardless() {
         super.orderFrontRegardless()
         startMaskSync()
@@ -41,11 +41,27 @@ class ShelfClipPanel: NSPanel {
 
     /// 启动 mask 同步定时器：每 1/60s 更新一次 mask
     /// 确保 animator().setFrame() 动画期间 mask 实时跟随 window frame
+    ///
+    /// 只在动画期间跑，跑完自动停。之前是「面板可见就一直跑」——书架常驻屏幕上时
+    /// 等于常开一个 60fps 定时器每帧重算 CALayer mask，白白吃掉渲染预算，
+    /// 其他动画跟着掉帧。
+    private var maskSyncGeneration = 0
+
     private func startMaskSync() {
         stopMaskSync()
         updateClipMask()
-        maskSyncTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
+        maskSyncGeneration += 1
+        let generation = maskSyncGeneration
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.updateClipMask()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        maskSyncTimer = timer
+        // 动画最长约 0.4s，留点余量到 0.6s；期间再次启动会刷新 generation，
+        // 旧的停止任务就不生效了
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.maskSyncGeneration == generation else { return }
+            self.stopMaskSync()
         }
     }
 

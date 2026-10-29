@@ -60,17 +60,22 @@ enum Motion {
     /// 系统「辅助功能 → 显示 → 减弱动态效果」。
     /// 缓存起来：每个动画令牌都会读它，而 `NSWorkspace` 这个属性要走辅助功能服务，不适合每帧问一次。
     private static var reduceMotionCache: Bool?
+    private static var observingReduceMotion = false
 
     static var reduceMotion: Bool {
         if let cached = reduceMotionCache { return cached }
         let value = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         reduceMotionCache = value
-        NotificationCenter.default.addObserver(
-            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Motion.reduceMotionCache = nil
+        // 只注册一次监听，否则每次系统设置变化后都会再挂一个 observer
+        if !observingReduceMotion {
+            observingReduceMotion = true
+            NotificationCenter.default.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                Motion.reduceMotionCache = nil
+            }
         }
         return value
     }
@@ -169,22 +174,26 @@ enum Motion {
     /// 之前几个 Popover 直接 `makeKeyAndOrderFront`，窗口是硬切的。
     /// 窗口本来就可见时（复用实例再次置前）不做动画，避免闪一下。
     ///
-    /// 位移用内容层的 `transform` 而不是窗口 frame：弹窗视图的 onAppear 会再调一次
+    /// 位移作用在内容层的 `transform` 上而不是窗口 frame：弹窗视图的 onAppear 会再调一次
     /// `setContentSize`，动 frame 会和它打架；窗口四周有 24pt 透明边距，位移不会被裁。
+    ///
+    /// 注意：NSView 的 backing layer 默认关掉了隐式动画，在 `CATransaction` 里改 transform
+    /// 是**不会动**的（第一版就是这么写的，所以看不到滑入），必须显式加 CABasicAnimation。
     static func present(_ window: NSWindow,
                         duration: Double = Duration.standard * 1.4,
                         slide: CGFloat = 14) {
+        let layer = window.contentView?.layer
         let wasVisible = window.isVisible
+
         guard !reduceMotion, !wasVisible else {
-            window.contentView?.layer?.transform = CATransform3DIdentity
+            layer?.removeAnimation(forKey: Self.slideInKey)
+            layer?.transform = CATransform3DIdentity
             window.alphaValue = 1
             window.makeKeyAndOrderFront(nil)
             return
         }
 
         let seconds = duration * tempo
-        let layer = window.contentView?.layer
-        layer?.transform = CATransform3DMakeTranslation(0, -slide, 0)
         window.alphaValue = 0
         window.makeKeyAndOrderFront(nil)
 
@@ -193,19 +202,25 @@ enum Motion {
             ctx.timingFunction = caEnter
             window.animator().alphaValue = 1
         }
+
         if let layer {
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(seconds)
-            CATransaction.setAnimationTimingFunction(caEnter)
             layer.transform = CATransform3DIdentity
-            CATransaction.commit()
+            let animation = CABasicAnimation(keyPath: "transform")
+            animation.fromValue = CATransform3DMakeTranslation(0, -slide, 0)
+            animation.toValue = CATransform3DIdentity
+            animation.duration = seconds
+            animation.timingFunction = caEnter
+            layer.add(animation, forKey: Self.slideInKey)
         }
 
         // 兜底：动画若被打断，位置和透明度都要拉回终态，别停在半路
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds + 0.2) { [weak window] in
             guard let window else { return }
+            window.contentView?.layer?.removeAnimation(forKey: Self.slideInKey)
             window.contentView?.layer?.transform = CATransform3DIdentity
             if window.alphaValue < 1 { window.alphaValue = 1 }
         }
     }
+
+    private static let slideInKey = "popupSlideIn"
 }

@@ -430,11 +430,9 @@ final class ShelfPanelController {
         let height = panel.frame.height
         let y = panel.frame.origin.y
 
-        // 关键：动画开始时立即显示竖条（竖条 orderFront 在主面板之后，z-order 更高）
-        // 主面板向左滑出时竖条一直可见，避免"主面板消失 → 空白 → 竖条出现"的闪烁
-        showMinimizedBar(screen: screen, y: y, height: height)
-
-        // 主 panel 向左滑出屏幕（mask 同步机制裁剪跨屏部分，不淡出 alpha 让滑动可见）
+        // 竖条等主面板滑出去之后再显示。
+        // 之前是「动画一开始就显示」，于是主面板还在滑、右边边缘的竖条已经立在那儿了，看着很怪。
+        // 现在放在 completion 里，和 orderOut 同一个 runloop，不会出现"面板没了 → 空白 → 竖条"的空窗。
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
@@ -442,6 +440,7 @@ final class ShelfPanelController {
             panel.animator().setFrame(hiddenFrame, display: true)
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
+                self?.showMinimizedBar(screen: screen, y: y, height: height)
                 panel.orderOut(nil)
                 self?.isShown = false
                 AppLog.shared.log("minimize: 已最小化为横条 height=\(height)", category: "Shelf")

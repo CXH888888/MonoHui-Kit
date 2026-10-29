@@ -481,17 +481,18 @@ struct DateFolderPopover: View {
 
                 // 渠道标签（只读，未选渠道时显示占位）：宽度按内容自适应，
                 // 渠道越多标签越宽、后面输入框越窄；文本过长时中间截断。
-                // 未选渠道时占位要「退到背景里」：文字降一档、底色也压淡，否则和已选状态一样抢眼。
+                // 未选渠道时占位文字用系统 placeholder 色，跟右边输入框里的「输入项目名称」一致；
+                // 底色保持不变（用户明确要求不要动背景）。
                 Text(channelText.isEmpty ? "渠道" : channelText)
                     .font(.system(size: 13, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .foregroundStyle(channelText.isEmpty ? Color.appleMuted : Color.appleInk)
+                    .foregroundStyle(channelText.isEmpty
+                                     ? Color(nsColor: .placeholderTextColor)
+                                     : Color.appleInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(channelText.isEmpty
-                                ? Color.appleSurface2.opacity(0.45)
-                                : Color.appleSurface2)
+                    .background(Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 // 名称输入框：吃掉剩余宽度；渠道标签过长时保底 120pt，不让输入框被挤没

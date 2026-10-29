@@ -540,9 +540,9 @@ final class PopupChrome: NSView {
 
         shadowHost.wantsLayer = true
         shadowHost.layer?.shadowColor = NSColor.black.cgColor
-        shadowHost.layer?.shadowOpacity = 0.16
-        shadowHost.layer?.shadowRadius = 12
-        shadowHost.layer?.shadowOffset = CGSize(width: 0, height: -4)
+        shadowHost.layer?.shadowOpacity = 0.22
+        shadowHost.layer?.shadowRadius = 16
+        shadowHost.layer?.shadowOffset = CGSize(width: 0, height: -6)
         addSubview(shadowHost)
 
         effect.material = .popover
