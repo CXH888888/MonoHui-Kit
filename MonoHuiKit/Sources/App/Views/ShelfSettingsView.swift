@@ -56,36 +56,31 @@ struct ShelfSettingsView: View {
     // MARK: - 总开关
 
     private var mainSwitchSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("总开关")
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("启用文件暂存箱")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.appleInk)
-                        Text("在屏幕左侧显示贴边面板")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.appleSoft)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $shelfEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .onChange(of: shelfEnabled) {
-                            applyShelfEnabled()
-                        }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("启用文件暂存箱")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.appleInk)
+                Text("在屏幕左侧显示贴边面板")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.appleSoft)
             }
-            .background(Color.appleSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.appleDivider, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            Spacer()
+            Toggle("", isOn: $shelfEnabled)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .onChange(of: shelfEnabled) {
+                    applyShelfEnabled()
+                }
         }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(Color.appleSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.appleDivider, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - 显示设置
@@ -94,87 +89,32 @@ struct ShelfSettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader("显示")
             VStack(spacing: 0) {
-                HStack {
-                    Text("自动隐藏延迟")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleInk)
-                    Spacer()
-                    Text(String(format: "%.1f 秒", autoHideDelay))
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                displayRow("自动隐藏延迟",
+                           valueText: String(format: "%.1f 秒", autoHideDelay),
+                           value: $autoHideDelay,
+                           range: 0.5...5.0,
+                           step: 0.5,
+                           rangeHint: "0.5–5.0 秒")
 
                 SectionDivider()
 
-                Slider(value: $autoHideDelay, in: 0.5...5.0, step: 0.5) {
-                    EmptyView()
-                } minimumValueLabel: {
-                    Text("0.5s").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                } maximumValueLabel: {
-                    Text("5s").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                displayRow("面板高度",
+                           valueText: "\(Int(panelHeight)) pt",
+                           value: $panelHeight,
+                           range: 300...800,
+                           step: 20,
+                           rangeHint: "300–800 pt",
+                           onChange: { ShelfPanelController.shared.refreshPanel() })
 
                 SectionDivider()
 
-                HStack {
-                    Text("面板高度")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleInk)
-                    Spacer()
-                    Text("\(Int(panelHeight)) pt")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-
-                SectionDivider()
-
-                Slider(value: $panelHeight, in: 300...800, step: 20) {
-                    EmptyView()
-                } minimumValueLabel: {
-                    Text("300").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                } maximumValueLabel: {
-                    Text("800").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .onChange(of: panelHeight) {
-                    ShelfPanelController.shared.refreshPanel()
-                }
-
-                SectionDivider()
-
-                HStack {
-                    Text("面板宽度")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleInk)
-                    Spacer()
-                    Text("\(Int(panelWidth)) pt")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-
-                SectionDivider()
-
-                Slider(value: $panelWidth, in: 120...240, step: 20) {
-                    EmptyView()
-                } minimumValueLabel: {
-                    Text("120").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                } maximumValueLabel: {
-                    Text("240").font(.system(size: 10)).foregroundStyle(Color.appleSoft)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .onChange(of: panelWidth) {
-                    ShelfPanelController.shared.refreshPanel()
-                }
+                displayRow("面板宽度",
+                           valueText: "\(Int(panelWidth)) pt",
+                           value: $panelWidth,
+                           range: 120...240,
+                           step: 20,
+                           rangeHint: "120–240 pt",
+                           onChange: { ShelfPanelController.shared.refreshPanel() })
             }
             .background(Color.appleSurface)
             .overlay(
@@ -183,85 +123,96 @@ struct ShelfSettingsView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
+    }
+
+    private func displayRow(_ title: String,
+                            valueText: String,
+                            value: Binding<Double>,
+                            range: ClosedRange<Double>,
+                            step: Double,
+                            rangeHint: String,
+                            onChange: (() -> Void)? = nil) -> some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.appleInk)
+                Spacer()
+                Text(valueText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.appleSoft)
+            }
+            Slider(value: value, in: range, step: step)
+                .onChange(of: value.wrappedValue) { _, _ in onChange?() }
+                .help("范围 \(rangeHint)")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
     }
 
     // MARK: - 移除方式
 
     private var removeActionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("移除方式")
-            VStack(spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("关闭/清空文件时")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.appleInk)
-                        Text("本地文件的处理方式（缓存文件/文件夹始终进 App 回收站）")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.appleSoft)
-                    }
-                    Spacer()
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("关闭/清空文件时")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.appleInk)
+                    Text("缓存文件/文件夹始终进 App 回收站")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.appleSoft)
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
-
-                SectionDivider()
-
-                // 两个选项
-                HStack(spacing: 8) {
-                    removeOptionButton(
-                        title: "放回原位",
-                        subtitle: "仅从中转站移除，不动文件",
-                        icon: "arrow.uturn.backward",
-                        action: "keep"
-                    )
-                    removeOptionButton(
-                        title: "移到 App 回收站",
-                        subtitle: "进入 App 回收站，超量自动清理",
-                        icon: "trash",
-                        action: "trash"
-                    )
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                Spacer()
             }
-            .background(Color.appleSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.appleDivider, lineWidth: 1)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
+
+            SectionDivider()
+
+            removeOptionRow(
+                title: "放回原位",
+                subtitle: "仅从中转站移除，不动文件",
+                action: "keep"
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            SectionDivider()
+            removeOptionRow(
+                title: "移到 App 回收站",
+                subtitle: "进入 App 回收站，超量自动清理",
+                action: "trash"
+            )
         }
+        .background(Color.appleSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.appleDivider, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    /// 移除方式选项按钮
-    private func removeOptionButton(title: String, subtitle: String, icon: String, action: String) -> some View {
+    private func removeOptionRow(title: String, subtitle: String, action: String) -> some View {
         let isSelected = removeAction == action
         return Button {
             removeAction = action
         } label: {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 9))
-                    .foregroundStyle(Color.appleSoft)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(isSelected ? Color.appleBlue : Color.appleMuted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.appleSoft)
+                }
+                Spacer()
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.appleBlue.opacity(0.12) : Color.appleSurface2.opacity(0.5))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.appleBlue : Color.clear, lineWidth: 1.5)
-            )
-            .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+            .background(isSelected ? Color.appleBlue.opacity(0.10) : Color.clear)
         }
         .buttonStyle(.plain)
     }
