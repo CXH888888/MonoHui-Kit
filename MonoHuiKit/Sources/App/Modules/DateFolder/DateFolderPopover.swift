@@ -6,9 +6,9 @@ struct DateFolderPopover: View {
     // 日期格式 pill（默认月日，空字符串 = 未选中）
     @State private var dateFormat: String = "MMdd"
 
-    // 渠道 pill（默认线上，可多选，空数组 = 未选中）
+    // 渠道 pill（默认一个都不选，可多选，空数组 = 未选中）
     // 门店/规范 这类「品种」和线上/线下 平级，靠多选表达「门店 + 线上物料」
-    @State private var channels: [String] = ["线上"]
+    @State private var channels: [String] = []
     // "其他"被选中时，用户自定义的渠道文本（持久化，切回"其他"时保留）
     @AppStorage("datefolder_interactive_custom_channel") private var customChannel: String = ""
 
