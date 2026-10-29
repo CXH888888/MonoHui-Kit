@@ -66,14 +66,8 @@ struct WindowDragStrip: NSViewRepresentable {
 struct TitlebarMetrics: NSViewRepresentable {
     let onUpdate: (CGFloat, CGFloat, CGFloat) -> Void
 
-    /// 红绿灯距窗口左边 / 上边的边距（系统默认 7 / 6，贴边太紧）
-    static var margin: CGFloat { 20 }
-    /// 三颗按钮之间保持系统原来的 6pt 节奏
-    static var spacing: CGFloat { 6 }
-
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        // 等窗口挂好再动；按钮位置这时才确定
         DispatchQueue.main.async { report(from: view) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { report(from: view) }
         return view
@@ -81,11 +75,14 @@ struct TitlebarMetrics: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {}
 
+    /// 只读位置，不移动红绿灯。
+    ///
+    /// 试过改 `standardWindowButton` 的 frame 把三颗按钮挪到 20pt 边距：
+    /// frame 确实改了、tracking area 也同步了，但**画面上那三个圆不跟着走**——
+    /// 标题栏区域由窗口服务进程合成，按钮的 frame 只决定看不见的点击区。
+    /// 结果是视觉错位 + 悬停失效，所以老老实实用系统位置，只把开关对齐过去。
     private func report(from view: NSView) {
         guard let window = view.window else { return }
-        Self.applyReposition(to: window)
-        observe(window)
-
         let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
             .compactMap { window.standardWindowButton($0) }
         guard let close = buttons.first else { return }
@@ -97,77 +94,8 @@ struct TitlebarMetrics: NSViewRepresentable {
         let trailingEdge = buttons
             .map { $0.convert($0.bounds, to: nil).maxX }
             .max() ?? 64
-        // 内容起点：至少 28（标准标题栏），且要低过红绿灯下沿 8pt
         let inset = max(28, centerY + closeRect.height / 2 + 8)
 
         onUpdate(inset, centerY, trailingEdge)
-    }
-
-    /// 窗口尺寸/激活变化后 AppKit 可能把按钮摆回原位，这里再应用一次
-    private func observe(_ window: NSWindow) {
-        let center = NotificationCenter.default
-        for name in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification] {
-            center.addObserver(forName: name, object: window, queue: .main) { note in
-                guard let w = note.object as? NSWindow else { return }
-                Self.applyReposition(to: w)
-            }
-        }
-    }
-
-    /// 把三颗红绿灯挪到指定边距。
-    ///
-    /// 系统没有「设置红绿灯位置」的公开 API，只能改 `standardWindowButton` 的 frame——
-    /// Electron 的 `trafficLightPosition` 也是这么实现的（对三颗按钮调 `setFrameOrigin:`）。
-    ///
-    /// **但只挪按钮是不够的**：标题栏上还有一条系统加的「红绿灯组」tracking area
-    /// （`NSThemeFrame` 自己的，覆盖三颗按钮的原始位置），它负责悬停时的高亮和 ×/−/+ 符号。
-    /// 按钮挪走、这条区域留在原地的话，鼠标在新位置根本不触发 hover，看起来就是"假按钮"。
-    /// 所以按钮挪完，把那条区域按同样的位移一起挪过去。
-    static func applyReposition(to window: NSWindow) {
-        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-            .compactMap { window.standardWindowButton($0) }
-        guard !buttons.isEmpty else { return }
-
-        let windowHeight = window.frame.height
-        let oldRects = buttons.map { $0.convert($0.bounds, to: nil) }
-        let oldGroup = oldRects.dropFirst().reduce(oldRects[0]) { $0.union($1) }
-
-        var x = margin
-        for button in buttons {
-            let current = button.convert(button.bounds, to: nil)
-            let target = NSRect(x: x,
-                                y: windowHeight - margin - current.height,
-                                width: current.width,
-                                height: current.height)
-            if let superview = button.superview {
-                button.frame = superview.convert(target, from: nil)
-            }
-            x += current.width + spacing
-        }
-
-        let newRects = buttons.map { $0.convert($0.bounds, to: nil) }
-        let newGroup = newRects.dropFirst().reduce(newRects[0]) { $0.union($1) }
-        syncTrackingArea(of: window, from: oldGroup, to: newGroup)
-    }
-
-    /// 把覆盖旧按钮组的 tracking area 平移到新位置
-    private static func syncTrackingArea(of window: NSWindow, from oldGroup: NSRect, to newGroup: NSRect) {
-        guard let theme = window.contentView?.superview else { return }
-        let dx = newGroup.minX - oldGroup.minX
-        let dy = newGroup.minY - oldGroup.minY
-        guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return }
-
-        // 只认「原点就是旧按钮组原点」的那一条：新旧区域会重叠，用 intersects 判断不出来
-        for area in theme.trackingAreas
-        where abs(area.rect.minX - oldGroup.minX) < 1 && abs(area.rect.minY - oldGroup.minY) < 1 {
-            let moved = area.rect.offsetBy(dx: dx, dy: dy)
-            let options = area.options
-            let info = area.userInfo
-            theme.removeTrackingArea(area)
-            theme.addTrackingArea(NSTrackingArea(rect: moved,
-                                                 options: options,
-                                                 owner: theme,
-                                                 userInfo: info))
-        }
     }
 }

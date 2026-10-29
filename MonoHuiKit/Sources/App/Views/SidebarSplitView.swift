@@ -50,6 +50,15 @@ struct SidebarSplitView<Detail: View>: View {
             toggleButton(icon: "sidebar.leading")
                 .padding(.leading, trafficLightTrailingEdge + Self.toggleGap)
                 .padding(.top, max(0, trafficLightCenterY - Self.toggleSize / 2))
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.onAppear {
+                            let f = geo.frame(in: .global)
+                            AppLog.shared.log("开关实际位置 x=\(Int(f.minX))..\(Int(f.maxX)) y=\(Int(f.minY))..\(Int(f.maxY))（红绿灯应在 y 20..36，右边缘 \(Int(trafficLightTrailingEdge))）",
+                                              category: "Titlebar")
+                        }
+                    }
+                )
         }
         .ignoresSafeArea(edges: .top)
         // 让窗口非不透明，`.behindWindow` 的毛玻璃才采样得到桌面
