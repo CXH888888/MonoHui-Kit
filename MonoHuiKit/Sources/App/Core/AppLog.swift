@@ -35,6 +35,19 @@ final class AppLog {
     private let fileQueue = DispatchQueue(label: "com.monohui.kit.applog.file")
     private let logFileURL: URL
     private let maxFileSize: Int = 3_000_000 // 3MB
+    /// 文件写入句柄：常开，避免每条日志都 open/close
+    private var fileHandle: FileHandle?
+    /// 距上次大小检查写了多少条
+    private var writesSinceSizeCheck = 0
+    /// 是否已经排了一次主线程刷新（合并批量日志）
+    private var pendingUIUpdate = false
+
+    /// 日志行时间戳格式化器：DateFormatter 构造很贵，全进程共用一个（只在 fileQueue 上用）
+    private static let lineFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter
+    }()
 
     private init() {
         let logDir = FileManager.default
@@ -114,12 +127,20 @@ final class AppLog {
         if storage.count > maxEntries {
             storage.removeFirst(storage.count - maxEntries)
         }
-        let snapshot = storage
+        // 合并刷新：一次批量压缩会连续写几百条，逐条 dispatch 到主线程毫无必要
+        let shouldScheduleUI = !pendingUIUpdate
+        pendingUIUpdate = true
         lock.unlock()
-        DispatchQueue.main.async { [weak self] in
-            self?.entries = snapshot
+
+        if shouldScheduleUI {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.lock.lock()
+                self.entries = self.storage
+                self.pendingUIUpdate = false
+                self.lock.unlock()
+            }
         }
-        NSLog("[\(category)] \(level.rawValue) \(message)")
         appendToFile(entry: entry)
     }
 
@@ -130,31 +151,36 @@ final class AppLog {
         }
     }
 
+    /// 写文件：复用同一个 FileHandle，避免每条日志都 open/close 三次系统调用；
+    /// DateFormatter 也缓存——之前每条日志 new 一个，批量压缩时是实打实的开销。
     private func writeToFile(entry: Entry) {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        let line = "[\(formatter.string(from: entry.timestamp))] [\(entry.category)] \(entry.level.rawValue) \(entry.message)\n"
-        // 检查文件大小，超过限制则滚动
-        if let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
-           let size = attrs[.size] as? Int, size > maxFileSize {
-            rotateLogFile()
+        let line = "[\(Self.lineFormatter.string(from: entry.timestamp))] [\(entry.category)] \(entry.level.rawValue) \(entry.message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        if fileHandle == nil {
+            if !FileManager.default.fileExists(atPath: logFileURL.path) {
+                FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+            }
+            fileHandle = try? FileHandle(forWritingTo: logFileURL)
+            _ = try? fileHandle?.seekToEnd()
         }
-        // 追加写入（文件不存在时自动创建）
-        if let data = line.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logFileURL.path) {
-                if let handle = try? FileHandle(forWritingTo: logFileURL) {
-                    _ = try? handle.seekToEnd()
-                    try? handle.write(contentsOf: data)
-                    try? handle.close()
-                }
-            } else {
-                try? data.write(to: logFileURL)
+        try? fileHandle?.write(contentsOf: data)
+
+        // 大小检查很便宜但没必要每条都做，攒够 200 条查一次
+        writesSinceSizeCheck += 1
+        if writesSinceSizeCheck >= 200 {
+            writesSinceSizeCheck = 0
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
+               let size = attrs[.size] as? Int, size > maxFileSize {
+                rotateLogFile()
             }
         }
     }
 
     /// 滚动日志：保留后半部分，前半部分丢弃
     private func rotateLogFile() {
+        try? fileHandle?.close()
+        fileHandle = nil
         guard let data = try? Data(contentsOf: logFileURL),
               let text = String(data: data, encoding: .utf8) else { return }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true)

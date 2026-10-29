@@ -407,11 +407,16 @@ final class HotKeyDispatcher {
         // 最外圈再补一道 0.5pt 描边：只有阴影时面板边缘会糊进背景，加一条 hairline 才有「边界」。
         let shadowInset: CGFloat = 24
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        let content = view
-            .clipShape(shape)
-            .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
-            .padding(shadowInset)
+        // 阴影挂在一块静态形状上，而不是挂在内容上：
+        // 输入框每敲一个字都会让内容重绘，挂在内容上的话整块面板的阴影要跟着重新光栅化，打字会发涩。
+        let content = ZStack {
+            shape.fill(Color.appleCanvas)
+                .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
+            view
+                .clipShape(shape)
+                .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
+        }
+        .padding(shadowInset)
 
         let hosting = NSHostingController(rootView: content)
         let window = PopupWindow(contentViewController: hosting)

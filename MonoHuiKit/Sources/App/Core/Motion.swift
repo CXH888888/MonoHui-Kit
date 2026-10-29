@@ -57,9 +57,22 @@ enum Motion {
 
     // MARK: - 减弱动效
 
-    /// 系统「辅助功能 → 显示 → 减弱动态效果」
+    /// 系统「辅助功能 → 显示 → 减弱动态效果」。
+    /// 缓存起来：每个动画令牌都会读它，而 `NSWorkspace` 这个属性要走辅助功能服务，不适合每帧问一次。
+    private static var reduceMotionCache: Bool?
+
     static var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if let cached = reduceMotionCache { return cached }
+        let value = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        reduceMotionCache = value
+        NotificationCenter.default.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Motion.reduceMotionCache = nil
+        }
+        return value
     }
 
     // MARK: - SwiftUI 缓动
