@@ -13,7 +13,7 @@ struct AboutDiagnosticsView: View {
                 updateSection
                 diagnosticsSection
             }
-            .padding(28)
+            .pagePadding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
@@ -26,14 +26,7 @@ struct AboutDiagnosticsView: View {
     // MARK: - 顶部条
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("关于与诊断")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-            Text("应用信息与诊断日志")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Color.appleSoft)
-        }
+        PageHeader("关于与诊断", subtitle: "应用信息与诊断日志")
     }
 
     // MARK: - Section header
@@ -87,40 +80,48 @@ struct AboutDiagnosticsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             sectionHeader("软件更新")
 
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(updateTitle)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.appleInk)
-                    Text(updateDetail)
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Color.appleSoft)
-                        .lineLimit(2)
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(updateTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.appleInk)
+                        Text(updateDetail)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Color.appleSoft)
+                            .lineLimit(2)
 
-                    if case .downloading(let progress) = service.state {
-                        ProgressView(value: progress)
-                            .frame(width: 240)
-                            .padding(.top, 4)
-                        Text(String(format: "%.0f%%", progress * 100))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(Color.appleMuted)
-                    }
-
-                    if case .failed = service.state {
-                        Button("在浏览器中手动下载") {
-                            NSWorkspace.shared.open(UpdateService.releasePageURL)
+                        if case .downloading(let progress) = service.state {
+                            ProgressView(value: progress)
+                                .frame(width: 240)
+                                .padding(.top, 4)
+                            Text(String(format: "%.0f%%", progress * 100))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Color.appleMuted)
                         }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.appleBlue)
-                        .padding(.top, 2)
-                    }
-                }
-                Spacer()
 
-                updateActionButton
+                        if case .failed = service.state {
+                            Button("在浏览器中手动下载") {
+                                NSWorkspace.shared.open(UpdateService.releasePageURL)
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.appleBlue)
+                            .padding(.top, 2)
+                        }
+                    }
+                    Spacer()
+
+                    updateActionButton
+                }
+                .padding(16)
+
+                Divider()
+
+                updateSourceRow
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
             }
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.appleSurface)
             .overlay(
@@ -128,8 +129,6 @@ struct AboutDiagnosticsView: View {
                     .stroke(Color.appleDivider, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            updateSourceRow
         }
     }
 

@@ -14,24 +14,30 @@ struct VideoCompressView: View {
     @State private var workTask: Task<Void, Never>?
 
     var body: some View {
-        ZStack {
-            if items.isEmpty {
-                dropZone
-            } else {
-                VStack(spacing: 0) {
-                    list
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if let report {
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader("视频压缩")
+                .padding(.top, 20)
+                .padding(.horizontal, 20)
+
+            ZStack {
+                if items.isEmpty {
+                    dropZone
+                } else {
+                    VStack(spacing: 0) {
+                        list
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if let report {
+                            Divider()
+                            summaryBar(report)
+                        }
                         Divider()
-                        summaryBar(report)
+                        bottomBar
                     }
-                    Divider()
-                    bottomBar
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(.container, edges: .top)
         .background(Color.appleCanvas)
         .background(VideoDropTargetView(items: $items, isTargeted: $isDropTargeted))
         .onAppear {
@@ -91,9 +97,9 @@ struct VideoCompressView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(isDropTargeted ? Color.appleBlue : Color.black.opacity(0.1),
-                        style: StrokeStyle(lineWidth: 2, dash: [8]))
-                .padding(16)
+                .stroke(isDropTargeted ? Color.appleBlue : Color.appleDropBorder,
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 0.5, dash: [8]))
+                .padding(20)
         )
     }
 

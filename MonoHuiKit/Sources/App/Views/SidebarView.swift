@@ -19,8 +19,8 @@ struct SidebarView: View {
             // 最上：圆环菜单 —— 交互层，不属于功能模块，单独置顶
             navButton(.radial, icon: "circle.dashed", label: "圆环菜单", isPrimary: true)
                 .padding(.horizontal, 12)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
 
             Divider()
                 .padding(.horizontal, 12)
@@ -35,7 +35,7 @@ struct SidebarView: View {
                 navButton(.shelf, icon: "tray", label: "文件暂存箱", isPrimary: true)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 14)
+            .padding(.top, 12)
             .padding(.bottom, 18)
 
             Spacer()

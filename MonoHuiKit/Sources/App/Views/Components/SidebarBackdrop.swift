@@ -57,45 +57,137 @@ struct WindowDragStrip: NSViewRepresentable {
     }
 }
 
-/// 读系统实际的红绿灯布局，避免写死数字。
+/// 把原生红绿灯挪到左上角的指定边距，并把实际布局回报给 SwiftUI。
 ///
-/// 回传三个值：
-/// - `titlebarInset`：内容要往下让出多少（保证不压到红绿灯）
-/// - `centerY`：红绿灯中心到窗口顶的距离（右侧开关靠它做垂直居中）
-/// - `trailingEdge`：最右那颗按钮的右边缘（开关从它右边开始排）
-struct TitlebarMetrics: NSViewRepresentable {
-    let onUpdate: (CGFloat, CGFloat, CGFloat) -> Void
+/// 系统没有公开的位置 API，做法和 Electron 的 `trafficLightPosition` 一致：
+/// 先把标题栏容器撑高到「按钮高 + 上下边距」，再把三颗按钮摆进容器。
+/// 只改按钮 frame 不行——按钮会被 28pt 高的标题栏容器裁掉，画面上直接消失。
+///
+/// 回传两个值：
+/// - `sidebarInset`：侧栏内容要往下让出多少（红绿灯底边 + 8pt）
+/// - `trailingEdge`：最右那颗按钮的右边缘（拖拽区从它右边开始）
+struct TitlebarLayout: NSViewRepresentable {
+    /// 红绿灯距窗口左、上边缘的边距
+    static let margin: CGFloat = 16
+
+    let onUpdate: (CGFloat, CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onUpdate: onUpdate) }
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { report(from: view) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { report(from: view) }
-        return view
+        let probe = Probe()
+        probe.onWindowChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(to: window)
+        }
+        return probe
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {}
 
-    /// 只读位置，不移动红绿灯。
-    ///
-    /// 试过改 `standardWindowButton` 的 frame 把三颗按钮挪到 20pt 边距：
-    /// frame 确实改了、tracking area 也同步了，但**画面上那三个圆不跟着走**——
-    /// 标题栏区域由窗口服务进程合成，按钮的 frame 只决定看不见的点击区。
-    /// 结果是视觉错位 + 悬停失效，所以老老实实用系统位置，只把开关对齐过去。
-    private func report(from view: NSView) {
-        guard let window = view.window else { return }
-        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
-            .compactMap { window.standardWindowButton($0) }
-        guard let close = buttons.first else { return }
+    final class Probe: NSView {
+        var onWindowChange: ((NSWindow?) -> Void)?
 
-        // NSView 转窗口坐标：原点在左下，y 要翻过来
-        let windowHeight = window.frame.height
-        let closeRect = close.convert(close.bounds, to: nil)
-        let centerY = windowHeight - closeRect.midY
-        let trailingEdge = buttons
-            .map { $0.convert($0.bounds, to: nil).maxX }
-            .max() ?? 64
-        let inset = max(28, centerY + closeRect.height / 2 + 8)
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            onWindowChange?(window)
+        }
+    }
 
-        onUpdate(inset, centerY, trailingEdge)
+    final class Coordinator {
+        private let onUpdate: (CGFloat, CGFloat) -> Void
+        private weak var window: NSWindow?
+        private var observers: [NSObjectProtocol] = []
+        private var lastReport: (CGFloat, CGFloat)?
+
+        init(onUpdate: @escaping (CGFloat, CGFloat) -> Void) {
+            self.onUpdate = onUpdate
+        }
+
+        func attach(to window: NSWindow?) {
+            guard window !== self.window else { return }
+            detach()
+            guard let window else { return }
+            self.window = window
+
+            apply()
+            // 视图挂上时 SwiftUI 还没排完版，稍后再落一次，避免被首轮布局覆盖
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.apply() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.apply() }
+
+            let center = NotificationCenter.default
+            // AppKit 在窗口激活 / 缩放 / 退出全屏时会重排标题栏，位置得跟着补
+            for name in [NSWindow.didBecomeKeyNotification,
+                         NSWindow.didResizeNotification,
+                         NSWindow.didExitFullScreenNotification] {
+                observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.apply()
+                })
+            }
+            observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.apply()
+            })
+        }
+
+        private func detach() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers.removeAll()
+            window = nil
+        }
+
+        private func apply() {
+            // 全屏时按钮由系统接管，别去改；退出全屏会收到通知再补
+            guard let window, !window.styleMask.contains(.fullScreen) else { return }
+            let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+                .compactMap { window.standardWindowButton($0) }
+            guard buttons.count == 3,
+                  let container = buttons[0].superview?.superview else { return }
+
+            let buttonSize = buttons[0].frame.size
+            // 按钮间距沿用系统当前值，别写死
+            let gap = max(0, buttons[1].frame.minX - buttons[0].frame.maxX)
+
+            var containerFrame = container.frame
+            containerFrame.size.height = buttonSize.height + TitlebarLayout.margin * 2
+            containerFrame.origin.y = window.frame.height - containerFrame.height
+            if container.frame != containerFrame {
+                container.frame = containerFrame
+            }
+
+            var x = TitlebarLayout.margin
+            let y = (containerFrame.height - buttonSize.height) / 2
+            for button in buttons {
+                let origin = NSPoint(x: x, y: y)
+                if button.frame.origin != origin {
+                    button.setFrameOrigin(origin)
+                }
+                x += buttonSize.width + gap
+            }
+
+            report(from: window)
+        }
+
+        private func report(from window: NSWindow) {
+            let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+                .compactMap { window.standardWindowButton($0) }
+            guard let close = buttons.first else { return }
+
+            // NSView 转窗口坐标：原点在左下，y 要翻过来
+            let closeRect = close.convert(close.bounds, to: nil)
+            let centerY = window.frame.height - closeRect.midY
+            let trailingEdge = buttons
+                .map { $0.convert($0.bounds, to: nil).maxX }
+                .max() ?? 74
+            let sidebarInset = max(28, centerY + closeRect.height / 2 + 8)
+
+            if let last = lastReport,
+               abs(last.0 - sidebarInset) < 0.5,
+               abs(last.1 - trailingEdge) < 0.5 {
+                return
+            }
+            lastReport = (sidebarInset, trailingEdge)
+            DispatchQueue.main.async { [onUpdate] in
+                onUpdate(sidebarInset, trailingEdge)
+            }
+        }
     }
 }

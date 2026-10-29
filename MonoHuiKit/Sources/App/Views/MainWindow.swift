@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct MainWindow: View {
     @Environment(AppState.self) var state
+    @Binding var showQuickCompressSettings: Bool
     @State private var imageItems: [ImageItem] = []
     @State private var isDropTargeted = false
     @State private var isCompressing = false
@@ -10,49 +11,35 @@ struct MainWindow: View {
     @State private var report: CompressionReport?
     @State private var showFilePicker = false
     @State private var hoveredItemID: UUID?
-    @State private var showQuickCompressSettings = false
     @State private var workTask: Task<Void, Never>?
 
     var body: some View {
-        ZStack {
-            if imageItems.isEmpty {
-                dropZone
-            } else {
-                VStack(spacing: 0) {
-                    thumbnailGrid
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader("图片压缩")
+                .padding(.top, 20)
+                .padding(.horizontal, 20)
 
-                    if let report {
+            ZStack {
+                if imageItems.isEmpty {
+                    dropZone
+                } else {
+                    VStack(spacing: 0) {
+                        thumbnailGrid
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        if let report {
+                            Divider()
+                            resultsPanel(report)
+                        }
+
                         Divider()
-                        resultsPanel(report)
+                        bottomBar
                     }
-
-                    Divider()
-                    bottomBar
                 }
             }
-
-            // 右上角快速压缩设置按钮
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(action: { showQuickCompressSettings = true }) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.appleSoft)
-                            .frame(width: 28, height: 28)
-                            .background(Color.appleSurface2)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("快速压缩设置")
-                }
-                .padding([.top, .trailing], 20)
-                Spacer()
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(.container, edges: .top)
         .background(Color.appleCanvas)
         .background(DropTargetView(imageItems: $imageItems, isTargeted: $isDropTargeted))
         .onAppear {
@@ -173,9 +160,9 @@ struct MainWindow: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(isDropTargeted ? Color.appleBlue : Color.black.opacity(0.1),
-                        style: StrokeStyle(lineWidth: 2, dash: [8]))
-                .padding(16)
+                .stroke(isDropTargeted ? Color.appleBlue : Color.appleDropBorder,
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 0.5, dash: [8]))
+                .padding(20)
         )
     }
 

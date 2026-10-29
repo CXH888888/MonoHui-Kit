@@ -8,7 +8,8 @@ struct RadialMenuSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            // 懒加载：预览区在首屏下方，滚到附近才构建（预览内含完整圆环视图，构建成本高）
+            LazyVStack(alignment: .leading, spacing: 24) {
                 header
                 masterSection
                 sectorSection
@@ -16,7 +17,7 @@ struct RadialMenuSettingsView: View {
                 previewSection
                 tipsSection
             }
-            .padding(28)
+            .pagePadding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
@@ -33,14 +34,7 @@ struct RadialMenuSettingsView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("圆环菜单")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-            Text("按住快捷键唤出，移动鼠标选择，松开执行")
-                .font(.system(size: 13))
-                .foregroundStyle(Color.appleSoft)
-        }
+        PageHeader("圆环菜单", subtitle: "按住快捷键唤出，移动鼠标选择，松开执行")
     }
 
     // MARK: - 总开关

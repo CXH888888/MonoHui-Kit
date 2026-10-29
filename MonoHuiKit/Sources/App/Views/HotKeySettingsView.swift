@@ -20,7 +20,7 @@ struct HotKeySettingsView: View {
                 conflictInfoSection
                 aboutSection
             }
-            .padding(28)
+            .pagePadding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
@@ -53,14 +53,7 @@ struct HotKeySettingsView: View {
     // MARK: - 页面头部
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("快捷键")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-            Text("设置全局快捷键，启用后 App 驻留菜单栏")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Color.appleSoft)
-        }
+        PageHeader("快捷键", subtitle: "设置全局快捷键，启用后 App 驻留菜单栏")
     }
 
     private func sectionHeader(_ text: String) -> some View { SectionHeader(text) }
@@ -172,10 +165,6 @@ struct HotKeySettingsView: View {
         let isRecording = recordingId == actionId
 
         return HStack(spacing: 12) {
-            Image(systemName: "circle.fill")
-                .foregroundStyle(Color.appleBlue.opacity(0.001))
-                .font(.system(size: 14))
-                .frame(width: 18, height: 18)
             Text(actionId.displayName)
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(Color.appleInk)

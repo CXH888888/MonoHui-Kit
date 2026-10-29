@@ -30,7 +30,7 @@ struct ShelfSettingsView: View {
                 rulesSection
                 cleanupSection
             }
-            .padding(28)
+            .pagePadding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
@@ -50,14 +50,7 @@ struct ShelfSettingsView: View {
     // MARK: - 顶部
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("文件暂存箱")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-            Text("左侧贴边的文件暂存区，支持拖拽与快速预览")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Color.appleSoft)
-        }
+        PageHeader("文件暂存箱", subtitle: "左侧贴边的文件暂存区，支持拖拽与快速预览")
     }
 
     // MARK: - 总开关

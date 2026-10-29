@@ -23,7 +23,7 @@ struct SettingsView: View {
                 permissionSection
                 serviceMenuSection
             }
-            .padding(28)
+            .pagePadding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scrollContentBackground(.hidden)
@@ -43,14 +43,7 @@ struct SettingsView: View {
     // MARK: - 顶部条：标题
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("设置")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Color.appleInk)
-            Text("管理权限与服务菜单")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(Color.appleSoft)
-        }
+        PageHeader("设置", subtitle: "管理权限与服务菜单")
     }
 
     // MARK: - 分隔线

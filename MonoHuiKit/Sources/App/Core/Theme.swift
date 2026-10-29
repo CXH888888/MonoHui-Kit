@@ -44,6 +44,9 @@ extension Color {
                                            dark: Color(red: 0.155, green: 0.155, blue: 0.164))
     static let appleBorder = dynamic(light: Color.black.opacity(0.16),
                                      dark: Color.white.opacity(0.16))
+    /// 拖拽区虚线：细、克制，深色底上刚好能看见
+    static let appleDropBorder = dynamic(light: Color.black.opacity(0.14),
+                                         dark: Color.white.opacity(0.16))
     static let appleDivider = dynamic(light: Color.black.opacity(0.10),
                                       dark: Color.white.opacity(0.10))
     static let appleSuccess = dynamic(light: Color(red: 0.11, green: 0.51, blue: 0.22),
@@ -61,6 +64,40 @@ struct SectionHeader: View {
             .foregroundStyle(Color.appleInk)
     }
     init(_ text: String) { self.text = text }
+}
+
+/// 统一的页面头部：标题与右上角齿轮同高（窗口顶 20pt），说明可选
+struct PageHeader: View {
+    let title: String
+    let subtitle: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(Color.appleInk)
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color.appleSoft)
+            }
+        }
+    }
+
+    init(_ title: String, subtitle: String? = nil) {
+        self.title = title
+        self.subtitle = subtitle
+    }
+}
+
+extension View {
+    /// 页面内容边距：四周统一 20pt，和右上角齿轮、左上红绿灯的 20pt 网格对齐
+    func pagePadding() -> some View {
+        self
+            .padding(.top, 20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+    }
 }
 
 /// section 内分隔线：左右各留 16 padding

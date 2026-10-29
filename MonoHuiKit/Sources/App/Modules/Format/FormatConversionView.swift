@@ -17,21 +17,27 @@ struct FormatConversionView: View {
     }
 
     var body: some View {
-        ZStack {
-            if items.isEmpty {
-                dropZone
-            } else {
-                VStack(spacing: 0) {
-                    itemGrid
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader("格式转化")
+                .padding(.top, 20)
+                .padding(.horizontal, 20)
 
-                    Divider()
-                    bottomBar
+            ZStack {
+                if items.isEmpty {
+                    dropZone
+                } else {
+                    VStack(spacing: 0) {
+                        itemGrid
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        Divider()
+                        bottomBar
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(.container, edges: .top)
         .background(Color.appleCanvas)
         .background(FormatDropTargetView(items: $items, isTargeted: $isDropTargeted, statusMessage: $statusMessage))
         .onAppear {
@@ -91,9 +97,9 @@ struct FormatConversionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(isDropTargeted ? Color.appleBlue : Color.black.opacity(0.1),
-                        style: StrokeStyle(lineWidth: 2, dash: [8]))
-                .padding(16)
+                .stroke(isDropTargeted ? Color.appleBlue : Color.appleDropBorder,
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 0.5, dash: [8]))
+                .padding(20)
         )
     }
 
