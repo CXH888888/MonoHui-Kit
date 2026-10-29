@@ -404,9 +404,12 @@ final class HotKeyDispatcher {
 
         // 系统窗口阴影对无边框窗口是按内容 alpha 生成的，半径固定，压在这块薄面板上显得很重。
         // 关掉窗口阴影，改由 SwiftUI 自绘一圈淡阴影；四周留出 24pt 透明边距给阴影落位。
+        // 最外圈再补一道 0.5pt 描边：只有阴影时面板边缘会糊进背景，加一条 hairline 才有「边界」。
         let shadowInset: CGFloat = 24
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         let content = view
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
             .padding(shadowInset)
 
@@ -475,6 +478,17 @@ final class HotKeyDispatcher {
         }
         AppLog.shared.log("窗口快照[\(snapshot.count)] \(snapshot.joined(separator: " , "))",
                           category: "Dispatcher")
+
+        // 再补一拍：创建瞬间的快照可能漏掉「稍后才冒出来的第二个窗口」
+        // （SwiftUI 场景恢复、旧窗口延迟 orderFront 都发生在下一个 runloop）。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            let visible = NSApp.windows.filter { $0.isVisible }
+            let popups = visible.filter { $0.identifier?.rawValue == "InteractivePopup" }
+            AppLog.shared.log("0.6s 后可见窗口=\(visible.count) 弹窗=\(popups.count) "
+                              + visible.map { "\($0.identifier?.rawValue ?? "main")@L\($0.level.rawValue)" }
+                                        .joined(separator: ","),
+                              category: "Dispatcher")
+        }
     }
 }
 
