@@ -3,7 +3,32 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
 
+    /// 侧栏内容固定宽度。
+    ///
+    /// 折叠 / 展开时系统会把这一列从 0 动画到 200，**每个中间宽度都会让内容重新布局一遍**，
+    /// 按钮被压窄、文字重排，看起来就是「先缩一下再展开」。
+    /// 把内容钉死在 200 宽，再让外层按列宽裁掉超出的部分：
+    /// 内容原地不动、从左往右揭开，不再有任何重排。
+    private static let columnWidth: CGFloat = 200
+
     var body: some View {
+        HStack(spacing: 0) {
+            column
+                .frame(width: Self.columnWidth)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .clipped()
+        .background(Color.appleSidebar)
+        // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
+        .background(SplitMaterialKiller())
+        // min = ideal = max：列宽只由系统开合控制，不能拖拽
+        .navigationSplitViewColumnWidth(min: Self.columnWidth,
+                                        ideal: Self.columnWidth,
+                                        max: Self.columnWidth)
+    }
+
+    private var column: some View {
         VStack(spacing: 0) {
             // 最上：圆环菜单 —— 交互层，不属于功能模块，单独置顶
             navButton(.radial, icon: "circle.dashed", label: "圆环菜单", isPrimary: true)
@@ -43,12 +68,7 @@ struct SidebarView: View {
             .padding(.top, 14)
             .padding(.bottom, 14)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.appleSidebar)
-        // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
-        .background(SplitMaterialKiller())
-        // min = ideal = max：折叠时是「整列滑走」，不再每帧重新协商列宽、重排文字
-        .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: - 功能区 section header（更显著）

@@ -232,11 +232,15 @@ struct HotKeySettingsView: View {
     // MARK: - 冲突信息（surface 卡片 + border）
 
     /// 冲突检查：**只在真有冲突时出现**。
-    /// 原来不管有没有冲突都占一张卡片，没冲突时整张卡只写「无冲突」，信息量为零。
+    ///
+    /// 必须用 `@ViewBuilder` 在顶层 `if`：如果返回一个"内容为空的 VStack"，
+    /// 它自身高度虽然是 0，但外层 `VStack(spacing: 24)` 仍会把它当成一个子视图，
+    /// 前后各留 24pt —— 表现就是「使用说明」上方凭空多出一大块空白。
+    @ViewBuilder
     private var conflictInfoSection: some View {
         let conflicts = detectConflicts()
-        return VStack(alignment: .leading, spacing: 12) {
-            if !conflicts.isEmpty {
+        if !conflicts.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
                 sectionHeader("冲突检查")
                 VStack(spacing: 0) {
                     ForEach(Array(conflicts.enumerated()), id: \.element) { index, msg in

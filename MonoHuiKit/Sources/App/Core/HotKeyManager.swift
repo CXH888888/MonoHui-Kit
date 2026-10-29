@@ -86,6 +86,8 @@ final class HotKeyManager {
     private var eventHandler: EventHandlerRef?
     /// 是否已通过 NSWorkspace 通知监听 Finder 激活/失活，用于动态注册/注销热键
     private var finderWatcherInstalled = false
+    /// 上一次激活时 Finder 是否在前台。只在「Finder ↔ 非 Finder」切换时才动热键
+    private var lastFinderActive: Bool?
 
     private init() {
         installEventHandler()
@@ -109,7 +111,8 @@ final class HotKeyManager {
         )
 
         // 启动时如果 Finder 已在前台，注册全部；否则只注册全局热键
-        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder" {
+        lastFinderActive = NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder"
+        if lastFinderActive == true {
             registerAllFromSettings()
         } else {
             registerGlobalOnly()
@@ -120,7 +123,15 @@ final class HotKeyManager {
     @objc private func onAppActivated(_ note: Notification) {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         let bid = app.bundleIdentifier ?? "nil"
-        if bid == "com.apple.finder" {
+        let finderActive = (bid == "com.apple.finder")
+
+        // 只在「Finder 在前台 ↔ 不在前台」真正翻转时才动热键。
+        // 每次激活都注销一遍的话，`UnregisterEventHotKey` 要走一次 WindowServer 同步 IPC
+        // （实测每个 ~8ms，4 个就是 30ms+），而绝大多数激活并不改变状态。
+        guard lastFinderActive != finderActive else { return }
+        lastFinderActive = finderActive
+
+        if finderActive {
             AppLog.shared.log("Finder 激活，注册热键", category: "HotKey", level: .success)
             registerAllFromSettings()
         } else {

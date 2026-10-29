@@ -13,6 +13,7 @@ struct SettingsView: View {
     /// 登录项开关（原来在「快捷键」页，属于系统级行为，挪到这里的「通用」）
     @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
     @State private var launchAtLoginError: String?
+    @State private var launchAtLoginBusy = false
 
     var body: some View {
         ScrollView {
@@ -75,19 +76,29 @@ struct SettingsView: View {
                     Toggle("", isOn: Binding(
                         get: { launchAtLoginEnabled },
                         set: { newValue in
-                            if LaunchAtLogin.setEnabled(newValue) {
-                                launchAtLoginEnabled = newValue
-                                launchAtLoginError = nil
-                            } else {
-                                // 失败时把开关拨回真实状态，别让界面骗人
-                                launchAtLoginEnabled = LaunchAtLogin.isEnabled
-                                launchAtLoginError = "设置失败，请在系统设置 → 通用 → 登录项 中手动添加"
+                            guard !launchAtLoginBusy else { return }
+                            launchAtLoginBusy = true
+                            launchAtLoginEnabled = newValue
+                            // 写登录项是同步系统调用（100~400ms），必须离开主线程
+                            Task {
+                                let ok = await LaunchAtLogin.setEnabledAsync(newValue)
+                                await MainActor.run {
+                                    launchAtLoginBusy = false
+                                    if ok {
+                                        launchAtLoginError = nil
+                                    } else {
+                                        // 失败时把开关拨回真实状态，别让界面骗人
+                                        launchAtLoginEnabled = LaunchAtLogin.isEnabled
+                                        launchAtLoginError = "设置失败，请在系统设置 → 通用 → 登录项 中手动添加"
+                                    }
+                                }
                             }
                         }
                     ))
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.large)
+                    .disabled(launchAtLoginBusy)
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
