@@ -366,18 +366,15 @@ struct MainWindow: View {
 
     // MARK: - 底部参数区
 
+    /// 参数区：两行参数 + 一行操作，和视频 / 格式转化两页结构一致
     private var bottomBar: some View {
         @Bindable var bindableState = state
-        return VStack(spacing: 10) {
+        return VStack(spacing: ParamLayout.rowGap) {
             if isCompressing {
                 progressRow
             }
 
-            HStack(spacing: 8) {
-                Text("格式")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                    .frame(width: 24, alignment: .leading)
+            ParamRow("格式") {
                 ForEach(CompressionFormat.allCases) { fmt in
                     PillButton(
                         label: fmt.displayName,
@@ -390,22 +387,18 @@ struct MainWindow: View {
                     )
                 }
                 .opacity(state.keepOriginalFormat ? 0.45 : 1)
-
-                Spacer(minLength: 8)
-
+            } trailing: {
+                // 模式开关放在格式行右端（就近表达「这一行整体失效」），
+                // 选中态由胶囊本身表达，标签不再加 ✓
                 PillButton(
-                    label: state.keepOriginalFormat ? "✓ 保持原格式" : "保持原格式",
+                    label: "保持原格式",
                     isSelected: state.keepOriginalFormat,
                     action: { bindableState.keepOriginalFormat.toggle() }
                 )
                 .help("按每个文件自身的格式压缩，不做格式转换（HEIC 用系统编码器）")
             }
 
-            HStack(spacing: 8) {
-                Text("质量")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                    .frame(width: 24, alignment: .leading)
+            ParamRow("质量") {
                 ForEach(QualityLevel.allCases) { ql in
                     PillButton(
                         label: ql.displayName,
@@ -413,36 +406,15 @@ struct MainWindow: View {
                         action: { bindableState.selectedQuality = ql }
                     )
                 }
-                Spacer(minLength: 0)
-
-                if isCompressing {
-                    Button("取消") { workTask?.cancel() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleSoft)
-                }
-
-                Button(action: compress) {
-                    HStack(spacing: 6) {
-                        if isCompressing {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 12, height: 12)
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                        }
-                        Text("压缩 \(imageItems.count) 个文件")
-                            .font(.system(size: 15, weight: .regular))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 180, height: 40)
-                    .background(isCompressing ? Color.appleBlue.opacity(0.7) : Color.appleBlue)
-                    .clipShape(RoundedRectangle(cornerRadius: 980))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isCompressing || imageItems.isEmpty)
             }
+
+            PrimaryActionBar(
+                title: "压缩 \(imageItems.count) 个文件",
+                isBusy: isCompressing,
+                isEnabled: !imageItems.isEmpty,
+                onCancel: { workTask?.cancel() },
+                action: compress
+            )
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)

@@ -23,6 +23,16 @@ enum AutomationPermission {
         return code != -1743
     }
 
+    /// 异步探测。
+    ///
+    /// `canControlFinder()` 内部是一次**同步的 AppleScript 往返**：要把 Apple Event 发给 Finder、
+    /// 等它回话，首次通常几十到几百毫秒（Finder 没在跑时还要等它启动）。
+    /// 直接在主线程序调，切到「设置」页、以及每次 App 重新激活都会整窗卡一下。
+    /// 探测本身没有 UI 依赖，扔到后台线程，结果再回主线程。
+    static func probeControlFinder() async -> Bool {
+        await Task.detached(priority: .utility) { canControlFinder() }.value
+    }
+
     /// 打开「系统设置 → 隐私与安全性 → 自动化」
     static func openSettings() {
         guard let url = URL(string:

@@ -28,6 +28,12 @@ extension Color {
                                        dark: Color(red: 0.12, green: 0.12, blue: 0.125))
     static let appleCanvas = dynamic(light: .white,
                                      dark: Color(red: 0.11, green: 0.11, blue: 0.12))
+    /// 侧栏底色：**不透明纯色**，替代系统 sidebar 材质。
+    /// 那层材质是 `.behindWindow` 的，侧栏折叠/展开时每帧都要重新采样桌面背后的画面，
+    /// 就是「点一下侧栏卡一下」的元凶（见 `SplitMaterialKiller`）。
+    /// 取值对齐 macOS 侧栏材质在浅色/深色窗口上的观感。
+    static let appleSidebar = dynamic(light: Color(red: 0.949, green: 0.949, blue: 0.957),
+                                      dark: Color(red: 0.137, green: 0.137, blue: 0.145))
     /// 弹窗底色：**半透明**，让窗口背后的 NSVisualEffectView 毛玻璃透出来。
     /// 弹窗根视图必须用它而不是 appleCanvas，否则不透明的白/黑会把毛玻璃完全盖掉。
     static let applePopupCanvas = dynamic(light: Color.white.opacity(0.74),

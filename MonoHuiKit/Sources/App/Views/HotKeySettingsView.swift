@@ -15,8 +15,7 @@ struct HotKeySettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 pageHeader
-                masterToggleSection
-                launchAtLoginSection
+                startupSection
                 shortcutListSection
                 conflictInfoSection
                 aboutSection
@@ -68,35 +67,57 @@ struct HotKeySettingsView: View {
 
     private var divider: some View { SectionDivider() }
 
-    // MARK: - 总开关（surface 卡片 + border）
+    // MARK: - 启动与驻留（一张卡片两行：总开关 + 开机自启动）
+    //
+    // 原来是两张几乎一样的卡片各带一个大 Toggle 上下叠着，标题还重复出现两次。
+    // 合并成一张卡片两行，和「设置」页的功能行同构。
 
-    private var masterToggleSection: some View {
+    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
+
+    private var startupSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("总开关")
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(state.hotKeyEnabled ? "已启用" : "未启用")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.appleInk)
-                    Text("启用后 App 驻留菜单栏，在 Finder 选中文件按快捷键即可触发对应功能")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Color.appleSoft)
-                        .fixedSize(horizontal: false, vertical: true)
+            sectionHeader("启动与驻留")
+            VStack(spacing: 0) {
+                settingRow(
+                    title: "快捷键总开关",
+                    detail: "启用后 App 驻留菜单栏，在 Finder 选中文件按快捷键即可触发对应功能"
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { state.hotKeyEnabled },
+                        set: { newValue in
+                            state.hotKeyEnabled = newValue
+                            refreshTrigger += 1
+                            showToast(newValue ? "已启用，App 驻留菜单栏" : "已禁用", error: false)
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.large)
                 }
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { state.hotKeyEnabled },
-                    set: { newValue in
-                        state.hotKeyEnabled = newValue
-                        refreshTrigger += 1
-                        showToast(newValue ? "已启用，App 驻留菜单栏" : "已禁用", error: false)
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.large)
+                divider
+                settingRow(
+                    title: "开机自启动",
+                    detail: "开机后自动驻留菜单栏，快捷键随时可用"
+                ) {
+                    Toggle("", isOn: Binding(
+                        get: { launchAtLoginEnabled },
+                        set: { newValue in
+                            if LaunchAtLogin.setEnabled(newValue) {
+                                launchAtLoginEnabled = newValue
+                                showToast(newValue ? "开机自启动已启用" : "开机自启动已禁用", error: false)
+                            } else {
+                                showToast("设置失败，请在系统设置中手动添加", error: true)
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.large)
+                }
+                .disabled(!state.hotKeyEnabled)
+                .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
             }
-            .padding(16)
+            .padding(.vertical, 4)
             .background(Color.appleSurface)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -106,48 +127,27 @@ struct HotKeySettingsView: View {
         }
     }
 
-    // MARK: - 开机自启动（surface 卡片 + border）
-
-    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
-
-    private var launchAtLoginSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("开机自启动")
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("开机自启动")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.appleInk)
-                    Text("开机后自动驻留菜单栏，快捷键随时可用")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { launchAtLoginEnabled },
-                    set: { newValue in
-                        if LaunchAtLogin.setEnabled(newValue) {
-                            launchAtLoginEnabled = newValue
-                            showToast(newValue ? "开机自启动已启用" : "开机自启动已禁用", error: false)
-                        } else {
-                            showToast("设置失败，请在系统设置中手动添加", error: true)
-                        }
-                    }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.large)
+    /// 设置行：左标题 + 说明，右控件。和「设置」页的功能行同构
+    private func settingRow<Accessory: View>(
+        title: String,
+        detail: String,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.appleInk)
+                Text(detail)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Color.appleSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(16)
-            .background(Color.appleSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.appleDivider, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .disabled(!state.hotKeyEnabled)
-            .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
+            Spacer(minLength: 12)
+            accessory()
         }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
     }
 
     // MARK: - 快捷键列表（surface 卡片 + border，功能行用 divider 分隔）

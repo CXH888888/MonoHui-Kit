@@ -199,20 +199,11 @@ struct FormatConversionView: View {
         }
     }
 
+    /// 参数区：转为（含「裁剪空白」开关）+ 操作行。
+    /// 原来主按钮挤在「转为」那一行，一行里三组控件，挤且和另两页不一致。
     private var bottomBar: some View {
-        VStack(spacing: 10) {
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(statusHasFailure ? Color.red : Color.appleSuccess)
-                    .frame(maxWidth: .infinity)
-            }
-
-            HStack(spacing: 8) {
-                Text("转为")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                    .frame(width: 24, alignment: .leading)
+        VStack(spacing: ParamLayout.rowGap) {
+            ParamRow("转为") {
                 ForEach(TargetFormat.allCases) { fmt in
                     PillButton(
                         label: fmt.displayName,
@@ -220,33 +211,25 @@ struct FormatConversionView: View {
                         action: { targetFormat = fmt }
                     )
                 }
-                Spacer(minLength: 0)
-
+            } trailing: {
                 Toggle("裁剪空白", isOn: $trimEdges)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .font(.system(size: 12, weight: .regular))
+            }
 
-                Button(action: convert) {
-                    HStack(spacing: 6) {
-                        if isConverting {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 12, height: 12)
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                        }
-                        Text("转换 \(items.count) 个文件")
-                            .font(.system(size: 15, weight: .regular))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 180, height: 40)
-                    .background(isConverting ? Color.appleBlue.opacity(0.7) : Color.appleBlue)
-                    .clipShape(RoundedRectangle(cornerRadius: 980))
-                    .contentShape(Rectangle())
+            PrimaryActionBar(
+                title: "转换 \(items.count) 个文件",
+                isBusy: isConverting,
+                isEnabled: !items.isEmpty,
+                action: convert
+            ) {
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(statusHasFailure ? Color.red : Color.appleSuccess)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.plain)
-                .disabled(isConverting || items.isEmpty)
             }
         }
         .padding(.horizontal, 24)

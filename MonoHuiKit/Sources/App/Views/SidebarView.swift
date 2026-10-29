@@ -44,8 +44,11 @@ struct SidebarView: View {
             .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.appleSurface)
-        .navigationSplitViewColumnWidth(200)
+        .background(Color.appleSidebar)
+        // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
+        .background(SplitMaterialKiller())
+        // min = ideal = max：折叠时是「整列滑走」，不再每帧重新协商列宽、重排文字
+        .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
     }
 
     // MARK: - 功能区 section header（更显著）

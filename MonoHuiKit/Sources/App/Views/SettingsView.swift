@@ -8,6 +8,8 @@ struct SettingsView: View {
     @State private var hasAccessibilityPermission = false
     @State private var hasAutomationPermission = false
     @State private var hasNotificationPermission = false
+    /// 上次探测权限的时间，用于给「App 重新激活」去抖
+    @State private var lastPermissionRefresh = Date.distantPast
 
     var body: some View {
         ScrollView {
@@ -27,6 +29,8 @@ struct SettingsView: View {
         }
         // 从系统设置授权回来时刷新状态，否则权限行会一直停在旧的「未授权」
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // 激活事件很频繁（点一下窗口就来一次），1.5 秒内不重复探测
+            guard Date().timeIntervalSince(lastPermissionRefresh) > 1.5 else { return }
             refreshPermissions()
         }
     }
@@ -238,9 +242,16 @@ struct SettingsView: View {
     }
 
     private func refreshPermissions() {
+        lastPermissionRefresh = Date()
+        // AXIsProcessTrusted 只是查一次 TCC 状态，很快
         hasAccessibilityPermission = AXIsProcessTrusted()
-        // 会触发系统授权弹窗（首次），这正是想要的引导效果
-        hasAutomationPermission = AutomationPermission.canControlFinder()
+
+        // 自动化那条要走 AppleScript 往返，必须离开主线程，否则整个窗口会僵一下
+        Task {
+            let automation = await AutomationPermission.probeControlFinder()
+            await MainActor.run { hasAutomationPermission = automation }
+        }
+
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
                 hasNotificationPermission = settings.authorizationStatus == .authorized

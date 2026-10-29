@@ -245,38 +245,32 @@ struct VideoCompressView: View {
 
     // MARK: - 底部参数区
 
+    /// 参数区：质量 / 分辨率 / 编码 三行 + 操作行。
+    /// 编码原来挤在「分辨率」行右端、没有标签，看不出是编码器，这里独立成行。
     private var bottomBar: some View {
         @Bindable var bindableState = state
-        return VStack(spacing: 10) {
+        return VStack(spacing: ParamLayout.rowGap) {
             if isCompressing {
                 progressRow
             }
 
-            HStack(spacing: 8) {
-                Text("质量")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                    .frame(width: 32, alignment: .leading)
+            ParamRow("质量") {
                 ForEach(VideoQuality.allCases) { q in
                     PillButton(label: q.displayName,
                                isSelected: bindableState.videoQuality == q,
                                action: { bindableState.videoQuality = q })
                 }
-                Spacer(minLength: 0)
             }
 
-            HStack(spacing: 8) {
-                Text("分辨率")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.appleSoft)
-                    .frame(width: 32, alignment: .leading)
+            ParamRow("分辨率") {
                 ForEach(VideoResolution.allCases) { r in
                     PillButton(label: r.displayName,
                                isSelected: bindableState.videoResolution == r,
                                action: { bindableState.videoResolution = r })
                 }
-                Spacer(minLength: 0)
+            }
 
+            ParamRow("编码") {
                 ForEach(VideoCodec.allCases) { c in
                     PillButton(label: c.displayName,
                                isSelected: bindableState.videoCodec == c,
@@ -284,40 +278,16 @@ struct VideoCompressView: View {
                 }
             }
 
-            HStack(spacing: 10) {
+            PrimaryActionBar(
+                title: "压缩 \(items.count) 个视频",
+                isBusy: isCompressing,
+                isEnabled: !items.isEmpty,
+                onCancel: { workTask?.cancel() },
+                action: compress
+            ) {
                 Text(state.videoCodec.detail)
                     .font(.system(size: 11))
                     .foregroundStyle(Color.appleMuted)
-
-                Spacer(minLength: 0)
-
-                if isCompressing {
-                    Button("取消") { workTask?.cancel() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.appleSoft)
-                }
-
-                Button(action: compress) {
-                    HStack(spacing: 6) {
-                        if isCompressing {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 12, height: 12)
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                        }
-                        Text("压缩 \(items.count) 个视频")
-                            .font(.system(size: 15, weight: .regular))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 190, height: 40)
-                    .background(isCompressing ? Color.appleBlue.opacity(0.7) : Color.appleBlue)
-                    .clipShape(RoundedRectangle(cornerRadius: 980))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isCompressing || items.isEmpty)
             }
         }
         .padding(.horizontal, 24)
