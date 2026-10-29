@@ -9,6 +9,8 @@ final class AppState {
     var moduleArgs: [String: String] = [:]
     /// 菜单栏功能项点击后记录目标页面，MainSplitView 挂载/刷新时消费
     var pendingSidebarItem: SidebarItem?
+    /// 侧栏是否展开（自绘两栏用，菜单 ⌃⌘S 也改这个）
+    var sidebarVisible = true
     var selectedFormat: CompressionFormat = .jpeg {
         didSet { UserDefaults.standard.set(selectedFormat.rawValue, forKey: "format") }
     }

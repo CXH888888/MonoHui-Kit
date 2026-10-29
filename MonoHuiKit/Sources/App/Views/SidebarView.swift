@@ -12,12 +12,6 @@ struct SidebarView: View {
     var body: some View {
         column
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Color.appleSidebar)
-            // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
-            .background(SplitMaterialKiller())
-            // 只给 ideal：写死 min = ideal = max 会让系统在展开时先摆到别的宽度再归位，
-            // 看起来就是「先缩一下才正常」
-            .navigationSplitViewColumnWidth(200)
     }
 
     private var column: some View {

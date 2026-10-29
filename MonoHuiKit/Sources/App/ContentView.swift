@@ -30,10 +30,10 @@ struct MainSplitView: View {
     @State private var selection: SidebarItem? = .compress
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(selection: $selection)
-        } detail: {
-            // 用 ZStack 底层放不透明 canvas 背景，强制覆盖 NavigationSplitView 的系统材质背景
+        @Bindable var bindableState = state
+        // 自绘两栏（见 SidebarSplitView）：系统的 NavigationSplitView 折叠动画
+        // 会把内容来回挪、还会在尺寸变化时重采样背后画面，几轮都没调干净。
+        return SidebarSplitView(selection: $selection, visible: $bindableState.sidebarVisible) {
             ZStack {
                 Color.appleCanvas
                 switch selection {
@@ -65,6 +65,7 @@ struct MainSplitView: View {
         .onReceive(NotificationCenter.default.publisher(for: .openShelfSettings)) { _ in
             // 中转站面板「设置」按钮触发：切换到中转站设置页 + 显示主窗口
             selection = .shelf
+            state.sidebarVisible = true
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             // 把主窗口置前
