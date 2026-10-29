@@ -395,7 +395,7 @@ struct QuickRenameBatchPopover: View {
         }
         .padding(24)
         .frame(width: 560)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .onAppear { onAppearInit() }
     }
 
@@ -1248,7 +1248,7 @@ struct QuickRenameBatchPopover: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color.appleDivider.opacity(0.5), lineWidth: 1)
@@ -1321,7 +1321,7 @@ struct QuickRenameBatchPopover: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
         .frame(width: 60)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .overlay(
             RoundedRectangle(cornerRadius: 4)
                 .stroke(Color.appleBlue, lineWidth: 1.5)
@@ -1434,7 +1434,7 @@ struct QuickRenameBatchPopover: View {
                         .foregroundStyle(.white, Color.red.opacity(0.9))
                         .background(
                             Circle()
-                                .fill(Color.appleCanvas)
+                                .fill(Color.appleCardOnCanvas)
                                 .frame(width: 18, height: 18)
                         )
                 }
@@ -1581,7 +1581,7 @@ struct QuickRenameBatchPopover: View {
                         .foregroundStyle(.white, Color.red.opacity(0.9))
                         .background(
                             Circle()
-                                .fill(Color.appleCanvas)
+                                .fill(Color.appleCardOnCanvas)
                                 .frame(width: 18, height: 18)
                         )
                 }

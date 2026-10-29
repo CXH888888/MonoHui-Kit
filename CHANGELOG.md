@@ -8,6 +8,16 @@
 
 ---
 
+## [v3.7.7] - 2026-10-29
+
+### 变更
+- **弹窗改用毛玻璃底**：新增 `PopupChrome`（`NSVisualEffectView`，`.popover` material + `.behindWindow`）垫在内容下面，弹窗底色改为半透明的 `Color.applePopupCanvas`，背后的 Finder 内容会隐约透出来。SwiftUI 的 material 在这种透明 + screenSaver 层级的窗口里拿不到采样，所以必须走 AppKit
+- **弹窗入场改成「淡入 + 上滑」**：位移 14pt、时长放慢到约 0.37s（原来只是 264ms 纯淡入）。位移用内容层的 `transform` 而不是窗口 frame，避免和视图 onAppear 里的 `setContentSize` 打架
+- **书架面板滑入放慢**：入场约 0.38s、退场约 0.28s（原来 0.26 / 0.20，滑入太快显得「弹」一下就到位）
+- **未选渠道时的「渠道」占位压淡**：文字降到 `appleMuted`、底色降到 45% 不透明，不再和已选状态一样抢眼
+
+---
+
 ## [v3.7.6] - 2026-10-29
 
 ### 性能

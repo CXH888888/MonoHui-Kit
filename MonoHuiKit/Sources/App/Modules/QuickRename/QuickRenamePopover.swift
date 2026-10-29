@@ -366,7 +366,7 @@ struct QuickRenamePopover: View {
         }
         .padding(24)
         .frame(width: 480)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .onAppear { onAppearInit() }
     }
 
@@ -690,7 +690,7 @@ struct QuickRenamePopover: View {
                 }
                 // 左渐变：已向右滚动（离开最左）时浮现，避免内容生硬截断
                 .overlay(alignment: .leading) {
-                    LinearGradient(colors: [Color.appleCanvas, .clear], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [Color.applePopupCanvas, .clear], startPoint: .leading, endPoint: .trailing)
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelLeftFade ? 1 : 0)
@@ -698,7 +698,7 @@ struct QuickRenamePopover: View {
                 }
                 // 右渐变：右侧还有未看完的内容时浮现，提示可滚动
                 .overlay(alignment: .trailing) {
-                    LinearGradient(colors: [.clear, Color.appleCanvas], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [.clear, Color.applePopupCanvas], startPoint: .leading, endPoint: .trailing)
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelRightFade ? 1 : 0)
@@ -738,7 +738,7 @@ struct QuickRenamePopover: View {
                         .foregroundStyle(.white, Color.red.opacity(0.9))
                         .background(
                             Circle()
-                                .fill(Color.appleCanvas)
+                                .fill(Color.appleCardOnCanvas)
                                 .frame(width: 18, height: 18)
                         )
                 }
@@ -1088,7 +1088,7 @@ struct QuickRenamePopover: View {
                                 .foregroundStyle(.white, Color.red.opacity(0.9))
                                 .background(
                                     Circle()
-                                        .fill(Color.appleCanvas)
+                                        .fill(Color.appleCardOnCanvas)
                                         .frame(width: 18, height: 18)
                                 )
                         }

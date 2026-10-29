@@ -405,18 +405,15 @@ final class HotKeyDispatcher {
         // 系统窗口阴影对无边框窗口是按内容 alpha 生成的，半径固定，压在这块薄面板上显得很重。
         // 关掉窗口阴影，改由 SwiftUI 自绘一圈淡阴影；四周留出 24pt 透明边距给阴影落位。
         // 最外圈再补一道 0.5pt 描边：只有阴影时面板边缘会糊进背景，加一条 hairline 才有「边界」。
-        let shadowInset: CGFloat = 24
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        // 阴影挂在一块静态形状上，而不是挂在内容上：
-        // 输入框每敲一个字都会让内容重绘，挂在内容上的话整块面板的阴影要跟着重新光栅化，打字会发涩。
-        let content = ZStack {
-            shape.fill(Color.appleCanvas)
-                .shadow(color: .black.opacity(0.16), radius: 12, x: 0, y: 4)
-            view
-                .clipShape(shape)
-                .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
-        }
-        .padding(shadowInset)
+        let shadowInset = PopupChrome.inset
+        let shape = RoundedRectangle(cornerRadius: PopupChrome.corner, style: .continuous)
+        // 阴影和毛玻璃都交给 PopupChrome（AppKit）画在内容下面：
+        // 透明 + screenSaver 层级的窗口里，SwiftUI 的 material 拿不到窗口背后的采样
+        // （圆环菜单踩过同样的坑），所以毛玻璃必须用 NSVisualEffectView。
+        let content = view
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
+            .padding(shadowInset)
 
         let hosting = NSHostingController(rootView: content)
         let window = PopupWindow(contentViewController: hosting)
@@ -433,6 +430,21 @@ final class HotKeyDispatcher {
         // 标记为弹窗窗口（windowWillClose 用此判断）
         window.identifier = NSUserInterfaceItemIdentifier("InteractivePopup")
         Self.currentPopup = window
+
+        // 内容搬进容器，容器最底层放「阴影 + 毛玻璃」
+        if let oldContent = window.contentView {
+            let hostView = oldContent
+            let container = NSView(frame: hostView.bounds)
+            container.wantsLayer = true
+            hostView.removeFromSuperview()
+            hostView.frame = container.bounds
+            hostView.autoresizingMask = [.width, .height]
+            let chrome = PopupChrome(frame: container.bounds)
+            chrome.autoresizingMask = [.width, .height]
+            container.addSubview(chrome)
+            container.addSubview(hostView)
+            window.contentView = container
+        }
 
         // 去掉标题栏后没有红色关闭按钮了，Esc 是唯一的取消方式。
         // 只靠 NSWindow.cancelOperation 不够稳（焦点在输入框或 SwiftUI 视图里会被吃掉），
@@ -507,5 +519,55 @@ final class PopupWindow: NSWindow {
 
     override func cancelOperation(_ sender: Any?) {
         close()
+    }
+}
+
+/// 弹窗的外壳：一层自绘阴影 + 一层 NSVisualEffectView 毛玻璃，垫在 SwiftUI 内容下面。
+///
+/// 为什么不用 SwiftUI 的 `.ultraThinMaterial`：这个窗口是透明 + `.screenSaver` 层级，
+/// material 拿不到窗口背后的采样，只会渲染成半透明灰（圆环菜单踩过同一个坑）。
+final class PopupChrome: NSView {
+    /// 窗口四周留出的透明边距，给阴影落位
+    static let inset: CGFloat = 24
+    static let corner: CGFloat = 12
+
+    private let shadowHost = NSView()
+    private let effect = NSVisualEffectView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+
+        shadowHost.wantsLayer = true
+        shadowHost.layer?.shadowColor = NSColor.black.cgColor
+        shadowHost.layer?.shadowOpacity = 0.16
+        shadowHost.layer?.shadowRadius = 12
+        shadowHost.layer?.shadowOffset = CGSize(width: 0, height: -4)
+        addSubview(shadowHost)
+
+        effect.material = .popover
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = Self.corner
+        effect.layer?.cornerCurve = .continuous
+        effect.layer?.masksToBounds = true
+        addSubview(effect)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layout() {
+        super.layout()
+        let rect = bounds.insetBy(dx: Self.inset, dy: Self.inset)
+        guard rect.width > 0, rect.height > 0 else { return }
+        shadowHost.frame = rect
+        shadowHost.layer?.shadowPath = CGPath(
+            roundedRect: CGRect(origin: .zero, size: rect.size),
+            cornerWidth: Self.corner,
+            cornerHeight: Self.corner,
+            transform: nil
+        )
+        effect.frame = rect
     }
 }

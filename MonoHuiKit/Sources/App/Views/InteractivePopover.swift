@@ -23,7 +23,7 @@ struct InteractivePopover: View {
         }
         .padding(24)
         .frame(width: 580, height: panelHeight)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .onAppear {
             if !state.preloadedURLs.isEmpty {
                 let urls = state.preloadedURLs.filter { ImageItem.isSupportedImage($0) }

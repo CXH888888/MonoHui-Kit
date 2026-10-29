@@ -28,6 +28,10 @@ extension Color {
                                        dark: Color(red: 0.12, green: 0.12, blue: 0.125))
     static let appleCanvas = dynamic(light: .white,
                                      dark: Color(red: 0.11, green: 0.11, blue: 0.12))
+    /// 弹窗底色：**半透明**，让窗口背后的 NSVisualEffectView 毛玻璃透出来。
+    /// 弹窗根视图必须用它而不是 appleCanvas，否则不透明的白/黑会把毛玻璃完全盖掉。
+    static let applePopupCanvas = dynamic(light: Color.white.opacity(0.74),
+                                          dark: Color(red: 0.13, green: 0.13, blue: 0.14).opacity(0.62))
     /// appleSurface（白 5% 半透明）合成到 appleCanvas 后的不透明等效色：
     /// 卡片滚动渐变遮罩必须用它，直接用半透明的 appleSurface 盖不住滚出的内容
     static let appleCardOnCanvas = dynamic(light: .white,

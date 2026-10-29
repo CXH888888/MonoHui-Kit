@@ -161,7 +161,7 @@ struct DateFolderPopover: View {
         }
         .padding(24)
         .frame(width: 480, height: selectedFileCount > 0 ? 430 : 380)
-        .background(Color.appleCanvas)
+        .background(Color.applePopupCanvas)
         .onAppear {
             DispatchQueue.main.async {
                 guard let window = HotKeyDispatcher.popupWindow else { return }
@@ -396,7 +396,7 @@ struct DateFolderPopover: View {
                 }
                 // 左渐变：已向右滚动（离开最左）时浮现
                 .overlay(alignment: .leading) {
-                    LinearGradient(colors: [Color.appleCanvas, .clear], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [Color.applePopupCanvas, .clear], startPoint: .leading, endPoint: .trailing)
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelLeftFade ? 1 : 0)
@@ -404,7 +404,7 @@ struct DateFolderPopover: View {
                 }
                 // 右渐变：右侧还有未看完的内容时浮现
                 .overlay(alignment: .trailing) {
-                    LinearGradient(colors: [.clear, Color.appleCanvas], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [.clear, Color.applePopupCanvas], startPoint: .leading, endPoint: .trailing)
                         .frame(width: 14)
                         .allowsHitTesting(false)
                         .opacity(channelRightFade ? 1 : 0)
@@ -444,7 +444,7 @@ struct DateFolderPopover: View {
                         .foregroundStyle(.white, Color.red.opacity(0.9))
                         .background(
                             Circle()
-                                .fill(Color.appleCanvas)
+                                .fill(Color.appleCardOnCanvas)
                                 .frame(width: 18, height: 18)
                         )
                 }
@@ -480,15 +480,18 @@ struct DateFolderPopover: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 // 渠道标签（只读，未选渠道时显示占位）：宽度按内容自适应，
-                // 渠道越多标签越宽、后面输入框越窄；文本过长时中间截断
+                // 渠道越多标签越宽、后面输入框越窄；文本过长时中间截断。
+                // 未选渠道时占位要「退到背景里」：文字降一档、底色也压淡，否则和已选状态一样抢眼。
                 Text(channelText.isEmpty ? "渠道" : channelText)
                     .font(.system(size: 13, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .foregroundStyle(channelText.isEmpty ? Color.appleSoft : Color.appleInk)
+                    .foregroundStyle(channelText.isEmpty ? Color.appleMuted : Color.appleInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
-                    .background(Color.appleSurface2)
+                    .background(channelText.isEmpty
+                                ? Color.appleSurface2.opacity(0.45)
+                                : Color.appleSurface2)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                 // 名称输入框：吃掉剩余宽度；渠道标签过长时保底 120pt，不让输入框被挤没

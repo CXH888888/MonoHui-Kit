@@ -165,29 +165,47 @@ enum Motion {
         reduceMotion ? 0 : duration * tempo
     }
 
-    /// 弹窗入场：先透明、再淡入（规范：面板 standard 240ms + ease.enter）。
-    /// 之前几个 Popover 直接 `makeKeyAndOrderFront`，窗口是硬切的，这是观感「不丝滑」的主要来源之一。
-    /// 窗口本来就可见时（复用实例再次置前）不做淡入，避免闪一下。
-    static func present(_ window: NSWindow, duration: Double = Duration.standard) {
+    /// 弹窗入场：淡入 + 轻微上滑（规范：面板 standard + ease.enter，这里再放慢一点）。
+    /// 之前几个 Popover 直接 `makeKeyAndOrderFront`，窗口是硬切的。
+    /// 窗口本来就可见时（复用实例再次置前）不做动画，避免闪一下。
+    ///
+    /// 位移用内容层的 `transform` 而不是窗口 frame：弹窗视图的 onAppear 会再调一次
+    /// `setContentSize`，动 frame 会和它打架；窗口四周有 24pt 透明边距，位移不会被裁。
+    static func present(_ window: NSWindow,
+                        duration: Double = Duration.standard * 1.4,
+                        slide: CGFloat = 14) {
         let wasVisible = window.isVisible
         guard !reduceMotion, !wasVisible else {
+            window.contentView?.layer?.transform = CATransform3DIdentity
             window.alphaValue = 1
             window.makeKeyAndOrderFront(nil)
             return
         }
+
+        let seconds = duration * tempo
+        let layer = window.contentView?.layer
+        layer?.transform = CATransform3DMakeTranslation(0, -slide, 0)
         window.alphaValue = 0
         window.makeKeyAndOrderFront(nil)
+
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = duration * tempo
+            ctx.duration = seconds
             ctx.timingFunction = caEnter
             window.animator().alphaValue = 1
         }
-        // 兜底：动画若被打断（窗口在别的 Space、runloop 卡住），alpha 会停在 0，
-        // 用户看到的就是「点了没反应」。超时后强制拉满。
-        let deadline = duration * tempo + 0.2
-        DispatchQueue.main.asyncAfter(deadline: .now() + deadline) { [weak window] in
-            guard let window, window.alphaValue < 1 else { return }
-            window.alphaValue = 1
+        if let layer {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(seconds)
+            CATransaction.setAnimationTimingFunction(caEnter)
+            layer.transform = CATransform3DIdentity
+            CATransaction.commit()
+        }
+
+        // 兜底：动画若被打断，位置和透明度都要拉回终态，别停在半路
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds + 0.2) { [weak window] in
+            guard let window else { return }
+            window.contentView?.layer?.transform = CATransform3DIdentity
+            if window.alphaValue < 1 { window.alphaValue = 1 }
         }
     }
 }
