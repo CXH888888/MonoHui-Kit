@@ -14,7 +14,10 @@ struct SidebarBackdrop: NSViewRepresentable {
         let view = NSVisualEffectView()
         view.material = .sidebar
         view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
+        // 不要用 .followsWindowActiveState：窗口在「活跃/非活跃」之间切换时，
+        // 整块玻璃要按两种状态各渲染一次，实测每次 App 激活主线程要花 100~190ms。
+        // 固定 .active，观感差别很小，但激活不再重算。
+        view.state = .active
         return view
     }
 

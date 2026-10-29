@@ -14,6 +14,8 @@ struct SidebarSplitView<Detail: View>: View {
     @Binding var visible: Bool
     @ViewBuilder var detail: Detail
 
+    @State private var hoveringToggle = false
+
     static var width: CGFloat { 200 }
     /// 隐藏标题栏后，内容要自己让出红绿灯那一条
     private static var titlebarInset: CGFloat { 28 }
@@ -71,15 +73,17 @@ struct SidebarSplitView<Detail: View>: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.appleSoft)
+                .foregroundStyle(hoveringToggle ? Color.appleInk : Color.appleSoft)
+                // 平时透明，只在悬停时浮出底色——不要给常驻底色，那样像一直按着
                 .frame(width: 24, height: 24)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.appleSurface2.opacity(0.55))
+                        .fill(hoveringToggle ? Color.appleSurface2.opacity(0.7) : Color.clear)
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hoveringToggle = $0 }
         .help(visible ? "隐藏边栏" : "显示边栏")
     }
 }
