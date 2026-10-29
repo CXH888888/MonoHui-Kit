@@ -174,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         AppLog.shared.log("App 启动 module=\(module) args=\(moduleArgs) urls=\(urls.count) hotKeyEnabled=\(appState.hotKeyEnabled) isLaunchedByServiceMenu=\(isLaunchedByServiceMenu)", category: "App")
 
+        // 主线程卡顿记录：常驻主进程才需要（服务菜单进程即用即走，记了也没人看）
+        if !isLaunchedByServiceMenu {
+            MainThreadWatchdog.shared.start()
+        }
+
         // --install / --uninstall 在 parseLaunchArgs 中未处理，这里单独检查
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--install") {

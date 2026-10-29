@@ -67,16 +67,14 @@ struct HotKeySettingsView: View {
 
     private var divider: some View { SectionDivider() }
 
-    // MARK: - 启动与驻留（一张卡片两行：总开关 + 开机自启动）
+    // MARK: - 总开关
     //
-    // 原来是两张几乎一样的卡片各带一个大 Toggle 上下叠着，标题还重复出现两次。
-    // 合并成一张卡片两行，和「设置」页的功能行同构。
-
-    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
+    // 「开机自启动」已移到「设置 → 通用」：它是系统级行为（登录项），
+    // 跟快捷键没有依赖关系，放在这里会被误读成"快捷键的子选项"。
 
     private var startupSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("启动与驻留")
+            sectionHeader("总开关")
             VStack(spacing: 0) {
                 settingRow(
                     title: "快捷键总开关",
@@ -94,28 +92,6 @@ struct HotKeySettingsView: View {
                     .toggleStyle(.switch)
                     .controlSize(.large)
                 }
-                divider
-                settingRow(
-                    title: "开机自启动",
-                    detail: "开机后自动驻留菜单栏，快捷键随时可用"
-                ) {
-                    Toggle("", isOn: Binding(
-                        get: { launchAtLoginEnabled },
-                        set: { newValue in
-                            if LaunchAtLogin.setEnabled(newValue) {
-                                launchAtLoginEnabled = newValue
-                                showToast(newValue ? "开机自启动已启用" : "开机自启动已禁用", error: false)
-                            } else {
-                                showToast("设置失败，请在系统设置中手动添加", error: true)
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.large)
-                }
-                .disabled(!state.hotKeyEnabled)
-                .opacity(state.hotKeyEnabled ? 1.0 : 0.5)
             }
             .padding(.vertical, 4)
             .background(Color.appleSurface)
@@ -255,26 +231,14 @@ struct HotKeySettingsView: View {
 
     // MARK: - 冲突信息（surface 卡片 + border）
 
+    /// 冲突检查：**只在真有冲突时出现**。
+    /// 原来不管有没有冲突都占一张卡片，没冲突时整张卡只写「无冲突」，信息量为零。
     private var conflictInfoSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("冲突检查")
-
-            let conflicts = detectConflicts()
-            VStack(spacing: 0) {
-                if conflicts.isEmpty {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16))
-                            .frame(width: 20, height: 20)
-                            .foregroundStyle(.green)
-                        Text("无冲突")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(Color.appleInk)
-                        Spacer()
-                    }
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 16)
-                } else {
+        let conflicts = detectConflicts()
+        return VStack(alignment: .leading, spacing: 12) {
+            if !conflicts.isEmpty {
+                sectionHeader("冲突检查")
+                VStack(spacing: 0) {
                     ForEach(Array(conflicts.enumerated()), id: \.element) { index, msg in
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -293,14 +257,14 @@ struct HotKeySettingsView: View {
                         }
                     }
                 }
+                .padding(.vertical, 4)
+                .background(Color.appleSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.appleDivider, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .padding(.vertical, 4)
-            .background(Color.appleSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.appleDivider, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 

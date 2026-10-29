@@ -10,11 +10,15 @@ struct SettingsView: View {
     @State private var hasNotificationPermission = false
     /// 上次探测权限的时间，用于给「App 重新激活」去抖
     @State private var lastPermissionRefresh = Date.distantPast
+    /// 登录项开关（原来在「快捷键」页，属于系统级行为，挪到这里的「通用」）
+    @State private var launchAtLoginEnabled = LaunchAtLogin.isEnabled
+    @State private var launchAtLoginError: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 topBar
+                generalSection
                 permissionSection
                 serviceMenuSection
             }
@@ -52,12 +56,68 @@ struct SettingsView: View {
 
     private var divider: some View { SectionDivider() }
 
+    // MARK: - 通用（系统级开关）
+
+    private var generalSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("通用")
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("开机自启动")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.appleInk)
+                        Text("登录后自动启动，驻留菜单栏")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Color.appleSoft)
+                    }
+                    Spacer(minLength: 12)
+                    Toggle("", isOn: Binding(
+                        get: { launchAtLoginEnabled },
+                        set: { newValue in
+                            if LaunchAtLogin.setEnabled(newValue) {
+                                launchAtLoginEnabled = newValue
+                                launchAtLoginError = nil
+                            } else {
+                                // 失败时把开关拨回真实状态，别让界面骗人
+                                launchAtLoginEnabled = LaunchAtLogin.isEnabled
+                                launchAtLoginError = "设置失败，请在系统设置 → 通用 → 登录项 中手动添加"
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.large)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+
+                if let launchAtLoginError {
+                    divider
+                    Text(launchAtLoginError)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                }
+            }
+            .padding(.vertical, 4)
+            .background(Color.appleSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     // MARK: - 权限（surface 卡片 + border，功能行用 divider 分隔）
 
     private var permissionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("权限")
-            Text("点「去设置」后，系统设置窗口下方会贴出一块可拖拽的卡片：把里面的 App 图标拖进授权列表即可。卡片跟着系统设置窗口走，切到别的 App 会自动收起。")
+            Text("点「去设置」会在系统设置窗口下方贴一块可拖拽的卡片，把 App 图标拖进授权列表即可。")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(Color.appleMuted)
                 .fixedSize(horizontal: false, vertical: true)
