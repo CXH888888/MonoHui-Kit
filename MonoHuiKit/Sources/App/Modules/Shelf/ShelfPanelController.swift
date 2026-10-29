@@ -356,7 +356,7 @@ final class ShelfPanelController {
             let token = hideAnimationToken
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-                ctx.timingFunction = Motion.caExit
+                ctx.timingFunction = Motion.caStandard
                 panel.animator().setFrame(hiddenFrame, display: true)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
@@ -436,7 +436,7 @@ final class ShelfPanelController {
         let hiddenFrame = calcHiddenFrame(for: screen, height: height)
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-            ctx.timingFunction = Motion.caExit
+            ctx.timingFunction = Motion.caStandard
             panel.animator().setFrame(hiddenFrame, display: true)
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
@@ -545,7 +545,7 @@ final class ShelfPanelController {
         // 之前动画一开始就显示，面板还在往左滑、右边边缘的竖条已经立着了，很突兀。
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-            ctx.timingFunction = Motion.caExit
+            ctx.timingFunction = Motion.caStandard
             panel.animator().setFrame(hiddenFrame, display: true)
         }, completionHandler: { [weak self] in
             DispatchQueue.main.async {
@@ -575,7 +575,7 @@ final class ShelfPanelController {
                 let oldHiddenFrame = calcHiddenFrame(for: oldScreen, height: oldHeight)
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-                    ctx.timingFunction = Motion.caExit
+                    ctx.timingFunction = Motion.caStandard
                     panel.animator().setFrame(oldHiddenFrame, display: true)
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
@@ -613,7 +613,7 @@ final class ShelfPanelController {
                 let oldHiddenFrame = calcMinimizedHiddenFrame(for: oldScreen, height: oldHeight)
                 NSAnimationContext.runAnimationGroup({ ctx in
                     ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-                    ctx.timingFunction = Motion.caExit
+                    ctx.timingFunction = Motion.caStandard
                     barPanel.animator().setFrame(oldHiddenFrame, display: true)
                 }, completionHandler: { [weak self] in
                     DispatchQueue.main.async {
@@ -837,12 +837,12 @@ final class ShelfPanelController {
 
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-                ctx.timingFunction = Motion.caExit
+                ctx.timingFunction = Motion.caStandard
                 panel.animator().alphaValue = 0
             }
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = Motion.caDuration(Motion.Duration.exit * 1.4)
-                ctx.timingFunction = Motion.caExit
+                ctx.timingFunction = Motion.caStandard
                 panel.animator().setFrame(oldHiddenFrame, display: true)
             }, completionHandler: { [weak self] in
                 DispatchQueue.main.async {

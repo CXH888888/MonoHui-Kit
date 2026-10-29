@@ -181,7 +181,7 @@ enum Motion {
     /// 是**不会动**的（第一版就是这么写的，所以看不到滑入），必须显式加 CABasicAnimation。
     static func present(_ window: NSWindow,
                         duration: Double = Duration.standard * 2.1,
-                        slide: CGFloat = 18) {
+                        slide: CGFloat = 24) {
         let layer = window.contentView?.layer
         let wasVisible = window.isVisible
 

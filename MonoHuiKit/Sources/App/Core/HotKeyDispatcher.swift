@@ -376,6 +376,25 @@ final class HotKeyDispatcher {
     /// 否则本 App 仍是 active，焦点会落到主窗口上，看起来就是「关掉弹窗又冒出主界面」。
     private static var previousFrontmost: NSRunningApplication?
 
+    /// 弹窗期间临时收起的主窗口，弹窗关闭后原样恢复。
+    /// 弹窗要拿键盘焦点就必须 `NSApp.activate`，而激活会把 App 的所有窗口一起抬到前台，
+    /// 用户正开着的主界面就会跟着跳到最前面——只能先把它收起来，关弹窗时再放回去。
+    private static var suspendedWindows: [NSWindow] = []
+
+    private static func suspendMainWindows() {
+        let targets = NSApp.windows.filter { $0.level == .normal && $0.isVisible }
+        guard !targets.isEmpty else { return }
+        suspendedWindows = targets
+        for window in targets { window.orderOut(nil) }
+        AppLog.shared.log("弹窗期间临时收起主窗口 \(targets.count) 个", category: "Dispatcher")
+    }
+
+    private static func restoreSuspendedWindows() {
+        guard !suspendedWindows.isEmpty else { return }
+        for window in suspendedWindows { window.orderFront(nil) }
+        suspendedWindows = []
+    }
+
     private static func restoreFrontmost(_ app: NSRunningApplication?) {
         guard let app,
               app.bundleIdentifier != Bundle.main.bundleIdentifier,
@@ -401,6 +420,7 @@ final class HotKeyDispatcher {
 
         // 记录前台 App（必须在 NSApp.activate 之前）
         Self.previousFrontmost = NSWorkspace.shared.frontmostApplication
+        Self.suspendMainWindows()
 
         // 系统窗口阴影对无边框窗口是按内容 alpha 生成的，半径固定，压在这块薄面板上显得很重。
         // 关掉窗口阴影，改由 SwiftUI 自绘一圈淡阴影；四周留出 24pt 透明边距给阴影落位。
@@ -463,6 +483,7 @@ final class HotKeyDispatcher {
                                                    queue: .main) { _ in
                 NSEvent.removeMonitor(escMonitor)
                 Self.restoreFrontmost(previousApp)
+                Self.restoreSuspendedWindows()
             }
         }
 
