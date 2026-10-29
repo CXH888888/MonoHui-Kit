@@ -24,6 +24,8 @@ struct SidebarSplitView<Detail: View>: View {
 
     static var width: CGFloat { 200 }
     static var toggleSize: CGFloat { 24 }
+    /// 开关与红绿灯之间的水平间距
+    static var toggleGap: CGFloat { 12 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -42,9 +44,9 @@ struct SidebarSplitView<Detail: View>: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: titlebarInset)
 
-            // 侧栏开关：水平贴在红绿灯右侧 12pt，垂直与红绿灯中心线对齐
+            // 侧栏开关：水平距红绿灯右边缘 24pt，垂直与红绿灯中心线对齐
             toggleButton(icon: "sidebar.leading")
-                .padding(.leading, trafficLightTrailingEdge + 12)
+                .padding(.leading, trafficLightTrailingEdge + Self.toggleGap)
                 .padding(.top, max(0, trafficLightCenterY - Self.toggleSize / 2))
         }
         .ignoresSafeArea(edges: .top)

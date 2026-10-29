@@ -66,9 +66,14 @@ struct WindowDragStrip: NSViewRepresentable {
 struct TitlebarMetrics: NSViewRepresentable {
     let onUpdate: (CGFloat, CGFloat, CGFloat) -> Void
 
+    /// 红绿灯距窗口左边 / 上边的边距（系统默认是 7 / 6，太贴边）
+    static var margin: CGFloat { 24 }
+    /// 三颗按钮之间保持系统原来的 6pt 节奏
+    static var spacing: CGFloat { 6 }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        // 等窗口挂好再读；标题栏高度/按钮位置这时才确定
+        // 等窗口挂好再动；按钮位置这时才确定
         DispatchQueue.main.async { report(from: view) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { report(from: view) }
         return view
@@ -76,8 +81,32 @@ struct TitlebarMetrics: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {}
 
+    /// 把三颗红绿灯整体挪到 24pt 边距处。
+    /// 系统没有提供"设置红绿灯位置"的 API，只能改 frame；
+    /// 实测在固定尺寸窗口上不会被 AppKit 重排回去（hide/show 后仍在）。
+    private func reposition(in window: NSWindow) {
+        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard !buttons.isEmpty else { return }
+
+        let windowHeight = window.frame.height
+        var x = Self.margin
+        for button in buttons {
+            let current = button.convert(button.bounds, to: nil)
+            let target = NSRect(x: x,
+                                y: windowHeight - Self.margin - current.height,
+                                width: current.width,
+                                height: current.height)
+            if let superview = button.superview {
+                button.frame = superview.convert(target, from: nil)
+            }
+            x += current.width + Self.spacing
+        }
+    }
+
     private func report(from view: NSView) {
         guard let window = view.window else { return }
+        reposition(in: window)
         let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
             .compactMap { window.standardWindowButton($0) }
         guard let close = buttons.first else { return }
