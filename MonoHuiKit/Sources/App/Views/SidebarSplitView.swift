@@ -15,10 +15,15 @@ struct SidebarSplitView<Detail: View>: View {
     @ViewBuilder var detail: Detail
 
     @State private var hoveringToggle = false
+    /// 从窗口实际布局读到的标题栏高度（默认 28 兜底）
+    @State private var titlebarInset: CGFloat = 28
+    /// 红绿灯按钮中心到窗口顶的距离，用来让右侧开关和它垂直居中对齐
+    @State private var trafficLightCenterY: CGFloat = 14
+    /// 红绿灯最右侧按钮的右边缘（窗口坐标，距左边），开关从它右边 12pt 开始
+    @State private var trafficLightTrailingEdge: CGFloat = 64
 
     static var width: CGFloat { 200 }
-    /// 隐藏标题栏后，内容要自己让出红绿灯那一条
-    private static var titlebarInset: CGFloat { 28 }
+    static var toggleSize: CGFloat { 24 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -26,7 +31,7 @@ struct SidebarSplitView<Detail: View>: View {
                 sidebar
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.top, Self.titlebarInset)
+                    .padding(.top, titlebarInset)
                     // 窗口是透明的（为了侧栏毛玻璃能采样桌面），详情列必须自己铺不透明底
                     .background(Color.appleCanvas.allowsHitTesting(false))
             }
@@ -35,16 +40,22 @@ struct SidebarSplitView<Detail: View>: View {
             // 内容整体上移到窗口顶了，标题栏那一条的拖拽区得自己补
             WindowDragStrip()
                 .frame(maxWidth: .infinity)
-                .frame(height: Self.titlebarInset)
+                .frame(height: titlebarInset)
 
-            // 侧栏开关固定在标题栏里、红绿灯右侧：展开和折叠都在同一个位置
+            // 侧栏开关：水平贴在红绿灯右侧 12pt，垂直与红绿灯中心线对齐
             toggleButton(icon: "sidebar.leading")
-                .padding(.leading, 76)
-                .padding(.top, 5)
+                .padding(.leading, trafficLightTrailingEdge + 12)
+                .padding(.top, max(0, trafficLightCenterY - Self.toggleSize / 2))
         }
         .ignoresSafeArea(edges: .top)
         // 让窗口非不透明，`.behindWindow` 的毛玻璃才采样得到桌面
         .background(WindowTransparency())
+        // 从系统读标题栏高度、红绿灯的实际 frame，别写死数字
+        .background(TitlebarMetrics { inset, centerY, trailingEdge in
+            titlebarInset = inset
+            trafficLightCenterY = centerY
+            trafficLightTrailingEdge = trailingEdge
+        })
     }
 
     private var sidebar: some View {
@@ -53,7 +64,7 @@ struct SidebarSplitView<Detail: View>: View {
             .overlay(alignment: .topLeading) {
                 SidebarView(selection: $selection)
                     .frame(width: Self.width)
-                    .padding(.top, Self.titlebarInset)
+                    .padding(.top, titlebarInset)
                     // 毛玻璃垫在内容下面、铺满整列（含标题栏那条）；固定 200 宽，不随折叠重采样
                     .background(SidebarBackdrop())
                     // 分隔线画在右边缘，跟着内容一起被裁掉

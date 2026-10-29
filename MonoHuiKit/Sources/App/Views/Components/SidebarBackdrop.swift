@@ -56,3 +56,42 @@ struct WindowDragStrip: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { self }
     }
 }
+
+/// 读系统实际的红绿灯布局，避免写死数字。
+///
+/// 回传三个值：
+/// - `titlebarInset`：内容要往下让出多少（保证不压到红绿灯）
+/// - `centerY`：红绿灯中心到窗口顶的距离（右侧开关靠它做垂直居中）
+/// - `trailingEdge`：最右那颗按钮的右边缘（开关从它右边开始排）
+struct TitlebarMetrics: NSViewRepresentable {
+    let onUpdate: (CGFloat, CGFloat, CGFloat) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        // 等窗口挂好再读；标题栏高度/按钮位置这时才确定
+        DispatchQueue.main.async { report(from: view) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { report(from: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private func report(from view: NSView) {
+        guard let window = view.window else { return }
+        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard let close = buttons.first else { return }
+
+        // NSView 转窗口坐标：原点在左下，y 要翻过来
+        let windowHeight = window.frame.height
+        let closeRect = close.convert(close.bounds, to: nil)
+        let centerY = windowHeight - closeRect.midY
+        let trailingEdge = buttons
+            .map { $0.convert($0.bounds, to: nil).maxX }
+            .max() ?? 64
+        // 内容起点：至少 28（标准标题栏），且要低过红绿灯下沿 8pt
+        let inset = max(28, centerY + closeRect.height / 2 + 8)
+
+        onUpdate(inset, centerY, trailingEdge)
+    }
+}
