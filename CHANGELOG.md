@@ -8,6 +8,16 @@
 
 ---
 
+## [v3.7.9] - 2026-10-29
+
+### 修复
+- **双屏时弹窗跑到另一块屏**：`positionWindowNearFinder` 用 `NSScreen.main` 做夹取——那是「key window 所在的屏」，主界面在左边屏时，右侧屏唤出的弹窗会被夹回左边屏。改为取 **Finder 窗口所在的那块屏**，没有 Finder 窗口时取光标所在的屏
+- 同一个问题还有一处：`currentFinderWindowFrame` 把 AppleScript 的左上角坐标换算成 AppKit 坐标时，用的是 `NSScreen.main.frame.height`。AppKit 全局坐标的原点固定在**主屏**左下角，多屏高度不同时 y 会算错。改为固定用主屏高度
+- 弹窗入场再放慢：`standard × 2.1`（约 0.55s）、位移 18pt（原来 0.37s / 14pt）
+- 暂存箱 peek 收起时，边缘竖条同样改为「主面板滑完再显示」（`minimize()` 上一版已改，`peekCollapse()` 漏了）
+
+---
+
 ## [v3.7.8] - 2026-10-29
 
 ### 修复

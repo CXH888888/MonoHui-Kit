@@ -180,8 +180,8 @@ enum Motion {
     /// 注意：NSView 的 backing layer 默认关掉了隐式动画，在 `CATransaction` 里改 transform
     /// 是**不会动**的（第一版就是这么写的，所以看不到滑入），必须显式加 CABasicAnimation。
     static func present(_ window: NSWindow,
-                        duration: Double = Duration.standard * 1.4,
-                        slide: CGFloat = 14) {
+                        duration: Double = Duration.standard * 2.1,
+                        slide: CGFloat = 18) {
         let layer = window.contentView?.layer
         let wasVisible = window.isVisible
 

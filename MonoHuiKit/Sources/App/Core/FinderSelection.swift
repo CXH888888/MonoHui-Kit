@@ -59,23 +59,53 @@ enum FinderSelection {
 
         // AppleScript bounds: {left, top, right, bottom}，原点左上角
         // NSRect: origin (left, bottom_y), size，原点左下角
-        // 转换：bottom_y = screenHeight - bottom
-        guard let screen = NSScreen.main else { return nil }
-        let screenHeight = screen.frame.height
+        // 转换：bottom_y = 主屏高度 - bottom
+        //
+        // 注意必须用**主屏**（origin == .zero 那块）的高度，不能用 NSScreen.main：
+        // NSScreen.main 是「key window 所在的屏」，多显示器时会变，
+        // 用它换算 y 会把窗口算到另一块屏上去。
+        let screenHeight = primaryScreenHeight
         return NSRect(x: left, y: screenHeight - bottom,
                       width: right - left, height: bottom - top)
+    }
+
+    /// AppKit 全局坐标的原点在主屏左下角
+    private static var primaryScreenHeight: CGFloat {
+        (NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.screens.first)?.frame.height ?? 0
+    }
+
+    /// 光标所在的屏幕
+    static func screenUnderMouse() -> NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(mouse) }
     }
 
     /// 将窗口定位到 Finder 当前窗口附近（居中在 Finder 窗口内），无 Finder 窗口则居中屏幕
     static func positionWindowNearFinder(_ window: NSWindow) {
         guard let finderFrame = currentFinderWindowFrame() else {
-            window.center()
+            // 没有 Finder 窗口：跟着光标走，别用 NSScreen.main（那是 key window 所在的屏）
+            if let screen = screenUnderMouse() ?? NSScreen.main {
+                let visible = screen.visibleFrame
+                let size = window.frame.size
+                window.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2,
+                                              y: visible.midY - size.height / 2))
+            } else {
+                window.center()
+            }
             return
         }
         let popSize = window.frame.size
         let centerX = finderFrame.midX - popSize.width / 2
         let centerY = finderFrame.midY - popSize.height / 2
-        guard let screen = NSScreen.main else {
+
+        // 夹取范围必须是 **Finder 窗口所在的那块屏**。
+        // 之前用 NSScreen.main（key window 所在屏），主界面在左边屏时，
+        // 右侧屏唤出的弹窗会被夹回左边屏——用户看到的就是「弹窗跑到另一块屏」。
+        let finderCenter = NSPoint(x: finderFrame.midX, y: finderFrame.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(finderCenter) }
+            ?? NSScreen.screens.first { $0.frame.intersects(finderFrame) }
+            ?? NSScreen.main
+        guard let screen else {
             window.setFrameOrigin(NSPoint(x: centerX, y: centerY))
             return
         }
