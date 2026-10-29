@@ -39,12 +39,14 @@ struct SidebarSplitView<Detail: View>: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // 内容整体上移到窗口顶了，标题栏那一条的拖拽区得自己补
+            // 内容整体上移到窗口顶了，标题栏那一条的拖拽区得自己补。
+            // 起点让开红绿灯：拖拽区会吞掉点击，压到按钮上就点不动了
             WindowDragStrip()
                 .frame(maxWidth: .infinity)
                 .frame(height: titlebarInset)
+                .padding(.leading, trafficLightTrailingEdge + 8)
 
-            // 侧栏开关：水平距红绿灯右边缘 24pt，垂直与红绿灯中心线对齐
+            // 侧栏开关：水平距红绿灯右边缘 12pt，垂直与红绿灯中心线对齐
             toggleButton(icon: "sidebar.leading")
                 .padding(.leading, trafficLightTrailingEdge + Self.toggleGap)
                 .padding(.top, max(0, trafficLightCenterY - Self.toggleSize / 2))
