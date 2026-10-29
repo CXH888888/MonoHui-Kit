@@ -3,29 +3,21 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
 
-    /// 侧栏内容固定宽度。
+    /// 侧栏内容随列宽伸缩。
     ///
-    /// 折叠 / 展开时系统会把这一列从 0 动画到 200，**每个中间宽度都会让内容重新布局一遍**，
-    /// 按钮被压窄、文字重排，看起来就是「先缩一下再展开」。
-    /// 把内容钉死在 200 宽，再让外层按列宽裁掉超出的部分：
-    /// 内容原地不动、从左往右揭开，不再有任何重排。
-    private static let columnWidth: CGFloat = 200
-
+    /// 试过「内容固定 200 宽 + 外层裁剪」，结果更糟：列宽变窄时系统会把这一列往左挪，
+    /// 裁剪只会把内容**左边**切掉（截图里「图片压缩」变成「片压缩」）。
+    /// 所以这里老老实实跟着列宽走，只在按钮文字上加 `lineLimit(1)`，
+    /// 保证中间宽度下不会换行把按钮撑高。
     var body: some View {
-        HStack(spacing: 0) {
-            column
-                .frame(width: Self.columnWidth)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .clipped()
-        .background(Color.appleSidebar)
-        // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
-        .background(SplitMaterialKiller())
-        // min = ideal = max：列宽只由系统开合控制，不能拖拽
-        .navigationSplitViewColumnWidth(min: Self.columnWidth,
-                                        ideal: Self.columnWidth,
-                                        max: Self.columnWidth)
+        column
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Color.appleSidebar)
+            // 干掉侧栏底下那层系统毛玻璃（见 SplitMaterialKiller）
+            .background(SplitMaterialKiller())
+            // 只给 ideal：写死 min = ideal = max 会让系统在展开时先摆到别的宽度再归位，
+            // 看起来就是「先缩一下才正常」
+            .navigationSplitViewColumnWidth(200)
     }
 
     private var column: some View {
@@ -97,6 +89,8 @@ struct SidebarView: View {
                 Text(label)
                     .font(.system(size: isPrimary ? 14 : 12, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.white : Color.appleInk)
+                    // 折叠/展开过程中列宽会短暂变窄，不限制行数的话文字会折行把按钮撑高
+                    .lineLimit(1)
                 Spacer()
             }
             .frame(maxWidth: .infinity, minHeight: isPrimary ? 40 : 28, alignment: .leading)
