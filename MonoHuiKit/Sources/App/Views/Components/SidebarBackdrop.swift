@@ -118,12 +118,20 @@ struct TitlebarMetrics: NSViewRepresentable {
     ///
     /// 系统没有「设置红绿灯位置」的公开 API，只能改 `standardWindowButton` 的 frame——
     /// Electron 的 `trafficLightPosition` 也是这么实现的（对三颗按钮调 `setFrameOrigin:`）。
+    ///
+    /// **但只挪按钮是不够的**：标题栏上还有一条系统加的「红绿灯组」tracking area
+    /// （`NSThemeFrame` 自己的，覆盖三颗按钮的原始位置），它负责悬停时的高亮和 ×/−/+ 符号。
+    /// 按钮挪走、这条区域留在原地的话，鼠标在新位置根本不触发 hover，看起来就是"假按钮"。
+    /// 所以按钮挪完，把那条区域按同样的位移一起挪过去。
     static func applyReposition(to window: NSWindow) {
         let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
             .compactMap { window.standardWindowButton($0) }
         guard !buttons.isEmpty else { return }
 
         let windowHeight = window.frame.height
+        let oldRects = buttons.map { $0.convert($0.bounds, to: nil) }
+        let oldGroup = oldRects.dropFirst().reduce(oldRects[0]) { $0.union($1) }
+
         var x = margin
         for button in buttons {
             let current = button.convert(button.bounds, to: nil)
@@ -135,6 +143,31 @@ struct TitlebarMetrics: NSViewRepresentable {
                 button.frame = superview.convert(target, from: nil)
             }
             x += current.width + spacing
+        }
+
+        let newRects = buttons.map { $0.convert($0.bounds, to: nil) }
+        let newGroup = newRects.dropFirst().reduce(newRects[0]) { $0.union($1) }
+        syncTrackingArea(of: window, from: oldGroup, to: newGroup)
+    }
+
+    /// 把覆盖旧按钮组的 tracking area 平移到新位置
+    private static func syncTrackingArea(of window: NSWindow, from oldGroup: NSRect, to newGroup: NSRect) {
+        guard let theme = window.contentView?.superview else { return }
+        let dx = newGroup.minX - oldGroup.minX
+        let dy = newGroup.minY - oldGroup.minY
+        guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return }
+
+        // 只认「原点就是旧按钮组原点」的那一条：新旧区域会重叠，用 intersects 判断不出来
+        for area in theme.trackingAreas
+        where abs(area.rect.minX - oldGroup.minX) < 1 && abs(area.rect.minY - oldGroup.minY) < 1 {
+            let moved = area.rect.offsetBy(dx: dx, dy: dy)
+            let options = area.options
+            let info = area.userInfo
+            theme.removeTrackingArea(area)
+            theme.addTrackingArea(NSTrackingArea(rect: moved,
+                                                 options: options,
+                                                 owner: theme,
+                                                 userInfo: info))
         }
     }
 }
