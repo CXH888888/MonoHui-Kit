@@ -164,7 +164,7 @@ struct DateFolderPopover: View {
         .background(Color.appleCanvas)
         .onAppear {
             DispatchQueue.main.async {
-                guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
+                guard let window = HotKeyDispatcher.popupWindow else { return }
                 // 高度跟随是否有选中文件（moveFileArea 占额外 50 高度）
                 let height = selectedFileCount > 0 ? 430 : 380
                 window.setContentSize(NSSize(width: 480 + 2 * Motion.popupShadowInset,

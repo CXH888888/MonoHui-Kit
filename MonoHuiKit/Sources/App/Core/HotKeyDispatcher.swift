@@ -365,6 +365,13 @@ final class HotKeyDispatcher {
     /// 只靠「遍历 NSApp.windows 按 level 过滤」会漏掉刚创建还没上屏的那个，于是叠出两块。
     private static weak var currentPopup: NSWindow?
 
+    /// 当前弹窗窗口。弹窗视图在 onAppear 里必须用这个精确定位自己所在的窗口——
+    /// 不能用 `NSApp.windows.first(where: { $0.level == .screenSaver })`：
+    /// 被 close() 的旧窗口仍留在 NSApp.windows 里（isReleasedWhenClosed = false），
+    /// 那个 first 很可能拿到旧的，再 makeKeyAndOrderFront 就把它重新显示出来，
+    /// 于是屏幕上出现两块一模一样的弹窗（日志里 0.6s 后 弹窗=2 就是这么来的）。
+    static var popupWindow: NSWindow? { currentPopup }
+
     /// 唤起弹窗前的前台 App（一般是 Finder）。弹窗关掉后把前台还给它，
     /// 否则本 App 仍是 active，焦点会落到主窗口上，看起来就是「关掉弹窗又冒出主界面」。
     private static var previousFrontmost: NSRunningApplication?

@@ -8,6 +8,13 @@
 
 ---
 
+## [v3.7.4] - 2026-10-29
+
+### 修复
+- **唤起两个弹窗的真正原因**：弹窗视图 `onAppear` 里用 `NSApp.windows.first(where: { $0.level == .screenSaver })` 找自己的窗口。被 `close()` 的旧窗口仍留在 `NSApp.windows` 里（`isReleasedWhenClosed = false`），这个 `first` 很可能拿到**旧的**，紧接着的 `makeKeyAndOrderFront` 就把旧窗口重新显示出来。日志实测：创建瞬间 `弹窗=1`，0.6 秒后变成 `弹窗=2`。改为通过 `HotKeyDispatcher.popupWindow` 精确引用当前窗口
+
+---
+
 ## [v3.7.3] - 2026-10-29
 
 ### 变更

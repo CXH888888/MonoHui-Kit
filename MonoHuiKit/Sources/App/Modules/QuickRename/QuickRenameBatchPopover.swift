@@ -451,7 +451,7 @@ struct QuickRenameBatchPopover: View {
 
         // 窗口校准
         DispatchQueue.main.async {
-            guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
+            guard let window = HotKeyDispatcher.popupWindow else { return }
             window.styleMask.remove(.resizable)
             window.isMovableByWindowBackground = true
             window.contentMinSize = NSSize(width: 560 + 2 * Motion.popupShadowInset,

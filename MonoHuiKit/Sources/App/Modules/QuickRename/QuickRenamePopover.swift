@@ -412,7 +412,7 @@ struct QuickRenamePopover: View {
 
         // 窗口校准（高度自适应内容）
         DispatchQueue.main.async {
-            guard let window = NSApp.windows.first(where: { $0.level == .screenSaver }) else { return }
+            guard let window = HotKeyDispatcher.popupWindow else { return }
             window.styleMask.remove(.resizable)
             window.isMovableByWindowBackground = true
             // 让窗口根据 SwiftUI 内容自动调整高度
