@@ -170,9 +170,10 @@ enum FinderSelection {
             let axApp = AXUIElementCreateApplication(app.processIdentifier)
             var focusedWindowRef: CFTypeRef?
             AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focusedWindowRef)
-            guard let focusedWindowRef = focusedWindowRef else { continue }
-            // 属性类型异常时直接跳过这个 Finder 进程，别让整个 App 崩掉
-            guard let focusedWindow = focusedWindowRef as? AXUIElement else { continue }
+            guard let focusedWindowRef else { continue }
+            // CF 类型不能用 as? 判定（编译器认为恒成功），先比对 TypeID 再转
+            guard CFGetTypeID(focusedWindowRef) == AXUIElementGetTypeID() else { continue }
+            let focusedWindow = focusedWindowRef as! AXUIElement
 
             var selectedChildrenRef: CFTypeRef?
             AXUIElementCopyAttributeValue(focusedWindow, kAXSelectedChildrenAttribute as CFString, &selectedChildrenRef)

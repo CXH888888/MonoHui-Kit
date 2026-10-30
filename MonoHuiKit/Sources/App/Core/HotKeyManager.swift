@@ -151,7 +151,15 @@ final class HotKeyManager {
             throw NSError(domain: "HotKeyManager", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "至少需要一个修饰键"])
         }
-        let carbonId = UInt32(abs(id.hashValue) % 0x7FFFFFFF)
+        // carbonId 用 action 的固定序号：hashValue 每次进程启动都随机，
+        // 两个 action 理论上可能撞到同一个 id，派发时就会触发错误动作
+        let carbonId: UInt32
+        if let action = HotKeyActionId(rawValue: id),
+           let index = HotKeyActionId.allCases.firstIndex(of: action) {
+            carbonId = UInt32(index + 1)
+        } else {
+            carbonId = UInt32(abs(id.hashValue) % 0x7FFFFFFF)
+        }
         let hotKeyId = EventHotKeyID(signature: fourChar("QAQA"), id: carbonId)
         var hotKeyRef: EventHotKeyRef?
         // 注意：不要把 activeFlag 加到 modifiers 里——它是事件状态标志，

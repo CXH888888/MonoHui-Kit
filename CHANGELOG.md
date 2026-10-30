@@ -11,6 +11,7 @@
 - **设置页服务菜单分组缺失**：补齐「视频」「文件命名」两组，视频压缩与快速改名服务现在可单独安装/移除
 - **压缩弹窗锁可能不释放**：`InteractivePopover` 全部成功后先 `releaseCompressLock()` 再延时关窗，避免服务进程关窗即退出导致锁残留
 - **服务缓存刷新白等 5 秒**：`ServiceMenuInstaller.runProcess` 在 `task.run()` 失败时直接返回，不再等满超时
+- **热键派发改用稳定 ID**：`HotKeyManager.register` 的 `carbonId` 由 `HotKeyActionId` 固定序号生成，不再依赖每进程随机的 `hashValue`，避免两个动作撞号后触发错误功能
 
 ### 变更
 - 删除 `AppState.windowDidBecomeKey` 中重复两遍的窗口透明设置代码
