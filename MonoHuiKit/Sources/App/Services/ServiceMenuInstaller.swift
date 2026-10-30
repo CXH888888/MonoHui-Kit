@@ -313,7 +313,13 @@ struct ServiceMenuInstaller {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: path)
         task.arguments = args
-        try? task.run()
+        // 启动失败时 terminationHandler 不会回调，继续 wait 会把调用线程白卡满超时
+        do {
+            try task.run()
+        } catch {
+            AppLog.shared.log("执行 \(path) 失败：\(error.localizedDescription)", category: "Service", level: .warn)
+            return
+        }
         let group = DispatchGroup()
         group.enter()
         task.terminationHandler = { _ in group.leave() }

@@ -540,13 +540,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 window.isOpaque = false
                 window.backgroundColor = .clear
             }
-            // 侧栏毛玻璃要采样桌面，窗口必须非不透明。
-            // 等 SwiftUI 视图出现后再改，窗口会先按不透明画一帧再变透明——观感就是「打开时闪一下」。
-            // 这里在窗口一成为 key 就设好，视图挂上时已经是透明的了。
-            if window.isOpaque || window.backgroundColor != .clear {
-                window.isOpaque = false
-                window.backgroundColor = .clear
-            }
         }
     }
 

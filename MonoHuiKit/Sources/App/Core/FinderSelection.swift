@@ -171,14 +171,13 @@ enum FinderSelection {
             var focusedWindowRef: CFTypeRef?
             AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &focusedWindowRef)
             guard let focusedWindowRef = focusedWindowRef else { continue }
-            // AXUIElement 是 toll-free bridged，AXUIElementCopyAttributeValue 对 kAXFocusedWindowAttribute
-            // 返回的就是 AXUIElement 类型，as! 不会崩溃
-            let focusedWindow = focusedWindowRef as! AXUIElement
+            // 属性类型异常时直接跳过这个 Finder 进程，别让整个 App 崩掉
+            guard let focusedWindow = focusedWindowRef as? AXUIElement else { continue }
 
             var selectedChildrenRef: CFTypeRef?
             AXUIElementCopyAttributeValue(focusedWindow, kAXSelectedChildrenAttribute as CFString, &selectedChildrenRef)
             guard let selectedChildrenRef = selectedChildrenRef else { continue }
-            let selectedChildren = selectedChildrenRef as! [AXUIElement]
+            guard let selectedChildren = selectedChildrenRef as? [AXUIElement] else { continue }
 
             for child in selectedChildren {
                 if let url = urlFromAXElement(child) {

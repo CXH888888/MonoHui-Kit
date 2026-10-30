@@ -6,6 +6,15 @@
 
 （开发过程中在此处填写改动，部署时 deploy.sh 会自动转为正式版本条目）
 
+### 修复
+- **读取选中项不再可能崩溃**：`FinderSelection.selectedURLsAccessibility` 的 `AXUIElement` / `[AXUIElement]` 强制转换改为 `as?`，属性类型异常时跳过该 Finder 进程
+- **设置页服务菜单分组缺失**：补齐「视频」「文件命名」两组，视频压缩与快速改名服务现在可单独安装/移除
+- **压缩弹窗锁可能不释放**：`InteractivePopover` 全部成功后先 `releaseCompressLock()` 再延时关窗，避免服务进程关窗即退出导致锁残留
+- **服务缓存刷新白等 5 秒**：`ServiceMenuInstaller.runProcess` 在 `task.run()` 失败时直接返回，不再等满超时
+
+### 变更
+- 删除 `AppState.windowDidBecomeKey` 中重复两遍的窗口透明设置代码
+
 ---
 
 ## [v4.1.2] - 2026-10-29

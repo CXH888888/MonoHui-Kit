@@ -276,15 +276,17 @@ struct InteractivePopover: View {
 
                 if result.failedCount == 0 && result.succeeded > 0 {
                     // 全部成功：标记完成并自动关闭
+                    // 先释放锁再关窗：服务菜单进程关窗后会立刻 terminate，
+                    // 放在 asyncAfter 里可能永远不执行，锁会一直卡到进程结束
                     showResult = true
+                    isCompressing = false
+                    CompressionEngine.releaseCompressLock()
                     AppNotification.send(title: "压缩完成", body: "\(result.succeeded) 个文件已压缩")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                         AppLog.shared.log("压缩弹窗完成，关闭窗口", category: "Dispatcher")
                         for window in NSApp.windows where window.level == .screenSaver {
                             window.close()
                         }
-                        isCompressing = false
-                        CompressionEngine.releaseCompressLock()
                     }
                 } else {
                     // 有失败（或全部失败）：保留窗口展示失败清单，释放锁允许重试

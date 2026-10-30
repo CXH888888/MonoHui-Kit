@@ -213,6 +213,12 @@ struct SettingsView: View {
                 divider
                 // 分组：文件夹
                 serviceGroup(title: "文件夹", actions: DateFolderModule.serviceActions)
+                divider
+                // 分组：视频
+                serviceGroup(title: "视频", actions: VideoCompressModule.serviceActions)
+                divider
+                // 分组：文件命名
+                serviceGroup(title: "文件命名", actions: QuickRenameModule.serviceActions)
             }
             .background(Color.appleSurface)
             .overlay(
