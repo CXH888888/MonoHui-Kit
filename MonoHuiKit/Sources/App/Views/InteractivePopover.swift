@@ -30,17 +30,7 @@ struct InteractivePopover: View {
                 imageItems = urls.map { ImageItem(url: $0) }
             }
             AppLog.shared.log("压缩弹窗 onAppear preloadedURLs=\(state.preloadedURLs.count) imageItems=\(imageItems.count)", category: "Dispatcher")
-            DispatchQueue.main.async {
-                guard let window = HotKeyDispatcher.popupWindow else { return }
-                window.setContentSize(NSSize(width: 580 + 2 * Motion.popupShadowInset,
-                                             height: panelHeight + 2 * Motion.popupShadowInset))
-                window.styleMask.remove(.resizable)
-                window.isMovableByWindowBackground = true
-                FinderSelection.positionWindowNearFinder(window)
-                window.level = .screenSaver
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-            }
+            HotKeyDispatcher.calibratePopupWindow(fixedSize: CGSize(width: 580, height: panelHeight))
         }
     }
 

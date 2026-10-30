@@ -372,6 +372,39 @@ final class HotKeyDispatcher {
     /// 于是屏幕上出现两块一模一样的弹窗（日志里 0.6s 后 弹窗=2 就是这么来的）。
     static var popupWindow: NSWindow? { currentPopup }
 
+    /// 弹窗窗口校准（固定尺寸）：按内容尺寸 + 四周阴影边距设窗口大小。
+    /// 各弹窗 `onAppear` 统一走这里，避免同串窗口设置在多处复制。
+    static func calibratePopupWindow(fixedSize size: CGSize) {
+        DispatchQueue.main.async {
+            guard let window = popupWindow else { return }
+            window.setContentSize(NSSize(width: size.width + 2 * Motion.popupShadowInset,
+                                         height: size.height + 2 * Motion.popupShadowInset))
+            presentPopupWindow(window)
+        }
+    }
+
+    /// 弹窗窗口校准（自适应高度）：只给宽和高度上下限，高度由 SwiftUI 内容撑开。
+    static func calibratePopupWindow(width: CGFloat, minHeight: CGFloat, maxHeight: CGFloat) {
+        DispatchQueue.main.async {
+            guard let window = popupWindow else { return }
+            window.contentMinSize = NSSize(width: width + 2 * Motion.popupShadowInset,
+                                           height: minHeight + 2 * Motion.popupShadowInset)
+            window.contentMaxSize = NSSize(width: width + 2 * Motion.popupShadowInset,
+                                           height: maxHeight + 2 * Motion.popupShadowInset)
+            presentPopupWindow(window)
+        }
+    }
+
+    /// 尺寸设定完后的公共收尾：不可调整大小、贴 Finder 定位、置顶并激活。
+    private static func presentPopupWindow(_ window: NSWindow) {
+        window.styleMask.remove(.resizable)
+        window.isMovableByWindowBackground = true
+        FinderSelection.positionWindowNearFinder(window)
+        window.level = .screenSaver
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// 唤起弹窗前的前台 App（一般是 Finder）。弹窗关掉后把前台还给它，
     /// 否则本 App 仍是 active，焦点会落到主窗口上，看起来就是「关掉弹窗又冒出主界面」。
     private static var previousFrontmost: NSRunningApplication?
