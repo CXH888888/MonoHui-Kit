@@ -288,7 +288,7 @@ struct MainWindow: View {
                     .foregroundStyle(Color.appleSoft)
                 Spacer()
 
-                if report.failedCount > 0 {
+                if report.hasIssues {
                     Button("复制清单") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(report.plainText(), forType: .string)
@@ -297,13 +297,15 @@ struct MainWindow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color.appleBlue)
 
-                    Button("定位失败文件") {
-                        let urls = report.failures.map { URL(fileURLWithPath: $0.path) }
-                        NSWorkspace.shared.activateFileViewerSelecting(urls)
+                    if report.failedCount > 0 {
+                        Button("定位失败文件") {
+                            let urls = report.failures.map { URL(fileURLWithPath: $0.path) }
+                            NSWorkspace.shared.activateFileViewerSelecting(urls)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.appleBlue)
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.appleBlue)
 
                     Button("完整报告") {
                         CompressionResultWindowController.shared.show(report: report)
@@ -318,7 +320,9 @@ struct MainWindow: View {
             .padding(.bottom, 6)
 
             if report.failures.isEmpty {
-                Text("全部文件压缩成功")
+                Text(report.skippedCount > 0
+                     ? "\(report.succeeded) 个压缩成功，\(report.skippedCount) 个已跳过（多为已压缩产物）"
+                     : "全部文件压缩成功")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.appleSoft)
                     .padding(.horizontal, 24)
@@ -468,7 +472,7 @@ struct MainWindow: View {
                 self.isCompressing = false
                 self.progress = nil
                 self.workTask = nil
-                if outcome.report.failedCount > 0 { outcome.report.writeToDisk() }
+                if outcome.report.hasIssues { outcome.report.writeToDisk() }
                 AppNotification.send(
                     title: outcome.report.failedCount > 0 ? "压缩完成，有文件失败" : "压缩完成",
                     body: outcome.report.notificationBody

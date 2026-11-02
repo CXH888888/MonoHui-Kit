@@ -30,6 +30,12 @@ final class AppState {
         didSet { UserDefaults.standard.set(quickKeepOriginal, forKey: "quickKeepOriginal") }
     }
 
+    /// 已压缩产物跳过开关（图片、视频、快速压缩共用同一份设置）。
+    /// 关掉后不再按文件名识别，行为回到改造前——用于确实需要对产物再压一档的场景。
+    var skipCompressedOutputs: Bool = true {
+        didSet { UserDefaults.standard.set(skipCompressedOutputs, forKey: "skipCompressedOutputs") }
+    }
+
     // 视频压缩参数
     var videoQuality: VideoQuality = .balanced {
         didSet { UserDefaults.standard.set(videoQuality.rawValue, forKey: "videoQuality") }
@@ -60,6 +66,7 @@ final class AppState {
             "quickQuality": QualityLevel.high.rawValue,
             "quickFormat": CompressionFormat.jpeg.rawValue,
             "quickKeepOriginal": true,
+            "skipCompressedOutputs": true,
             "videoQuality": VideoQuality.balanced.rawValue,
             "videoResolution": VideoResolution.original.rawValue,
             "videoCodec": VideoCodec.h264.rawValue
@@ -83,6 +90,7 @@ final class AppState {
             quickQuality = ql
         }
         quickKeepOriginal = UserDefaults.standard.object(forKey: "quickKeepOriginal") as? Bool ?? true
+        skipCompressedOutputs = UserDefaults.standard.object(forKey: "skipCompressedOutputs") as? Bool ?? true
 
         if let raw = UserDefaults.standard.string(forKey: "videoQuality"),
            let value = VideoQuality(rawValue: raw) { videoQuality = value }

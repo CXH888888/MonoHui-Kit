@@ -3,6 +3,7 @@ import ApplicationServices
 import UserNotifications
 
 struct SettingsView: View {
+    @Environment(AppState.self) private var state
     @State private var installedActions: Set<String> = []
     @State private var operationInProgress = false
     @State private var hasAccessibilityPermission = false
@@ -20,6 +21,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 topBar
                 generalSection
+                compressionSection
                 permissionSection
                 serviceMenuSection
             }
@@ -43,7 +45,7 @@ struct SettingsView: View {
     // MARK: - 顶部条：标题
 
     private var topBar: some View {
-        PageHeader("设置", subtitle: "管理权限与服务菜单")
+        PageHeader("设置", subtitle: "管理权限、压缩行为与服务菜单")
     }
 
     // MARK: - 分隔线
@@ -105,6 +107,44 @@ struct SettingsView: View {
                         .padding(.vertical, 10)
                         .padding(.horizontal, 16)
                 }
+            }
+            .padding(.vertical, 4)
+            .background(Color.appleSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appleDivider, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    // MARK: - 压缩行为
+
+    /// 与压缩相关的全局行为开关。档位、格式这类参数属于具体功能，仍在各功能页里，
+    /// 这里只放跨模块的行为策略（图片压缩、快速压缩、视频压缩共用）。
+    private var compressionSection: some View {
+        @Bindable var bindableState = state
+        return VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("压缩")
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("跳过已压缩文件")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.appleInk)
+                        Text("文件名带 -q75、-lossless、-压缩 等后缀时不再重复压缩，避免画质二次劣化和后缀层层叠加")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Color.appleSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Toggle("", isOn: $bindableState.skipCompressedOutputs)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.large)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
             }
             .padding(.vertical, 4)
             .background(Color.appleSurface)

@@ -235,8 +235,8 @@ struct VideoCompressView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Color.appleSoft)
             Spacer()
-            if report.failedCount > 0 {
-                Button("查看失败明细") {
+            if report.hasIssues {
+                Button(report.failedCount > 0 ? "查看失败明细" : "查看跳过明细") {
                     CompressionResultWindowController.shared.show(report: report)
                 }
                 .buttonStyle(.plain)

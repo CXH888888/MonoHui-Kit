@@ -51,11 +51,25 @@ struct CompressionReport {
 
     /// 通知正文：失败时列出前 3 个文件名，让人一眼知道去查什么
     var notificationBody: String {
-        guard failedCount > 0 else { return "\(succeeded) 个文件压缩成功" }
+        guard failedCount > 0 else {
+            // 全部是已压缩产物时，「0 个文件压缩成功」读起来像出错，
+            // 必须直说跳过原因，否则用户以为点了菜单没生效
+            if skippedCount > 0 {
+                return succeeded > 0
+                    ? "\(succeeded) 个成功，\(skippedCount) 个已跳过"
+                    : "\(skippedCount) 个文件已压缩过，无需重复处理"
+            }
+            return "\(succeeded) 个文件压缩成功"
+        }
         let names = failures.prefix(3).map(\.fileName).joined(separator: "、")
         let more = failedCount > 3 ? " 等 \(failedCount) 个" : ""
-        return "\(succeeded) 个成功，\(failedCount) 个失败：\(names)\(more)"
+        var text = "\(succeeded) 个成功，\(failedCount) 个失败：\(names)\(more)"
+        if skippedCount > 0 { text += "；另有 \(skippedCount) 个已跳过" }
+        return text
     }
+
+    /// 有需要用户留意的内容（失败或跳过）——决定是否落盘报告、是否给明细入口
+    var hasIssues: Bool { failedCount > 0 || skippedCount > 0 }
 
     /// 纯文本报告：可直接复制给他人，也可落盘留档
     func plainText() -> String {

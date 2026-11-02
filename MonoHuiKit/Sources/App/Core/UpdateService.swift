@@ -273,7 +273,7 @@ final class UpdateService {
         let observer = ProgressRelay(fallbackTotal: fallbackTotal, onProgress: onProgress)
         return try await withCheckedThrowingContinuation { continuation in
             let task = session.downloadTask(with: request) { url, response, error in
-                observer.stop()
+                observer.stop(notifyComplete: error == nil && url != nil)
                 if let error {
                     continuation.resume(throwing: error)
                 } else if let url, let response {
@@ -507,14 +507,19 @@ private final class RedirectStripper: NSObject, URLSessionTaskDelegate {
     }
 }
 
-/// 通过 KVO 观察 `URLSessionTask.progress`，把下载进度回报给 UI。
-/// 这是唯一可靠的进度来源：session 的 `didWriteData` 在 completion-handler 任务上是 0 回调。
-private final class ProgressRelay: NSObject {
+/// 定时读取 `URLSessionTask.progress`，把下载进度回报给 UI。
+///
+/// 不用 KVO 观察 `fractionCompleted`：`NSProgress` 会合并高频更新，
+/// 实测 15MB 的 dmg 只回调一两次——面板停在 5% 一动不动，直到下载完成直接跳「正在安装」。
+/// 直接轮询属性读到的一定是最新值，200ms 一次的开销可以忽略。
+///
+/// 也不用 session 的 `didWriteData`：completion-handler 版任务不会触发 session 级 delegate。
+private final class ProgressRelay: NSObject, @unchecked Sendable {
     private let fallbackTotal: Int64
     private let onProgress: (Double) -> Void
-    private var observation: NSKeyValueObservation?
+    private let lock = NSLock()
+    private var timer: DispatchSourceTimer?
     private var lastReported: Double = -1
-    private var lastTime = Date.distantPast
 
     init(fallbackTotal: Int64, onProgress: @escaping (Double) -> Void) {
         self.fallbackTotal = fallbackTotal
@@ -522,29 +527,48 @@ private final class ProgressRelay: NSObject {
     }
 
     func attach(to task: URLSessionDownloadTask) {
-        observation = task.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
-            self?.report(progress)
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        timer.schedule(deadline: .now() + 0.2, repeating: 0.2, leeway: .milliseconds(60))
+        timer.setEventHandler { [weak self, weak task] in
+            guard let self, let task else { return }
+            self.report(task.progress)
         }
+        timer.resume()
+
+        lock.lock()
+        self.timer = timer
+        lock.unlock()
     }
 
-    func stop() {
-        observation?.invalidate()
-        observation = nil
+    func stop(notifyComplete: Bool = false) {
+        lock.lock()
+        let timer = self.timer
+        self.timer = nil
+        lock.unlock()
+        timer?.cancel()
+
+        // 下载成功时补报 100%：轮询可能刚好停在 99% 就被取消，
+        // 不补这一下进度条会一直差一格，看起来像没下完
+        if notifyComplete { onProgress(1) }
     }
 
     private func report(_ progress: Progress) {
         let done = Double(progress.completedUnitCount)
-        let total = progress.totalUnitCount > 0
-            ? Double(progress.totalUnitCount)
-            : Double(fallbackTotal)
+        // 优先用 Release 里登记的 size：`progress.totalUnitCount` 在握手阶段是 -1，
+        // 中途才可能变成真实值，用它会让进度条先跳一下再回落
+        let total = fallbackTotal > 0
+            ? Double(fallbackTotal)
+            : Double(progress.totalUnitCount)
         guard total > 0, done > 0 else { return }
 
         let fraction = min(1, done / total)
-        // 节流：进度至少前进 0.5%，或距上次上报超过 0.1 秒，避免高频刷主线程
-        let now = Date()
-        guard fraction - lastReported >= 0.005 || now.timeIntervalSince(lastTime) >= 0.1 else { return }
-        lastReported = fraction
-        lastTime = now
+        // 每 0.2% 上报一次，几百次回调级别，不会压满主线程
+        lock.lock()
+        let shouldReport = fraction - lastReported >= 0.002
+        if shouldReport { lastReported = fraction }
+        lock.unlock()
+
+        guard shouldReport else { return }
         onProgress(fraction)
     }
 }

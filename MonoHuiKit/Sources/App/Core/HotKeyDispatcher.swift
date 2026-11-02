@@ -227,16 +227,13 @@ final class HotKeyDispatcher {
         AppLog.shared.log("快速压缩完成 \(report.summaryLine)", category: "Dispatcher",
                           level: report.failedCount > 0 ? .warn : .success)
 
-        if report.failedCount > 0 {
+        if report.hasIssues {
             report.writeToDisk()
         }
 
         await MainActor.run {
-            QuickCompressHUDController.shared.finish(
-                summary: report.summaryLine,
-                failedCount: report.failedCount,
-                autoDismissAfter: report.failedCount > 0 ? 0.6 : 1.8
-            )
+            // 成功 1.8s 收起；有失败或跳过时留 5s，够用户点「查看明细」
+            QuickCompressHUDController.shared.finish(report: report)
         }
 
         AppNotification.send(
@@ -244,12 +241,8 @@ final class HotKeyDispatcher {
             body: report.notificationBody
         )
 
-        if report.failedCount > 0 {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            await MainActor.run {
-                CompressionResultWindowController.shared.show(report: report)
-            }
-        }
+        // 明细只由用户点面板上的「查看明细」触发（见 QuickCompressHUD），这里不自动弹窗。
+        // 早先失败时是自动弹的，结果用户没点也会冒出结果窗口。
     }
 
     /// 视频快速压缩（无窗口，带浮动进度）
@@ -298,14 +291,11 @@ final class HotKeyDispatcher {
         let report = outcome.report
         AppLog.shared.log("视频快速压缩完成 \(report.summaryLine)", category: "Dispatcher",
                           level: report.failedCount > 0 ? .warn : .success)
-        if report.failedCount > 0 { report.writeToDisk() }
+        if report.hasIssues { report.writeToDisk() }
 
         await MainActor.run {
-            QuickCompressHUDController.shared.finish(
-                summary: report.summaryLine,
-                failedCount: report.failedCount,
-                autoDismissAfter: report.failedCount > 0 ? 0.6 : 1.8
-            )
+            // 成功 1.8s 收起；有失败或跳过时留 5s，够用户点「查看明细」
+            QuickCompressHUDController.shared.finish(report: report)
         }
 
         AppNotification.send(
@@ -313,12 +303,7 @@ final class HotKeyDispatcher {
             body: report.notificationBody
         )
 
-        if report.failedCount > 0 {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            await MainActor.run {
-                CompressionResultWindowController.shared.show(report: report)
-            }
-        }
+        // 与图片链路一致：明细只在用户点「查看明细」时弹出，不自动打扰
     }
 
     // MARK: - 弹出交互弹窗
@@ -573,6 +558,53 @@ final class PopupWindow: NSWindow {
 
     override func cancelOperation(_ sender: Any?) {
         close()
+    }
+}
+
+extension HotKeyDispatcher {
+    /// 创建一块与各功能弹窗外观一致的独立浮层窗口：
+    /// 无标题栏、圆角毛玻璃、自绘阴影、Esc 关闭。
+    ///
+    /// 与 `openStandaloneWindow` 的区别在于**不带弹窗互斥与前台恢复逻辑**——
+    /// 那个是「一次只允许一个功能弹窗」的入口守卫，而这里给的是压缩结果这类
+    /// 由其他入口弹出的次级窗口：它不该顺手关掉调用它的压缩弹窗，也不该改前台 App。
+    static func makePopupStyledWindow<V: View>(content: V, size: CGSize) -> NSWindow {
+        let inset = PopupChrome.inset
+        let shape = RoundedRectangle(cornerRadius: PopupChrome.corner, style: .continuous)
+        let framed = content
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(Color.appleDivider, lineWidth: 0.5))
+            .padding(inset)
+
+        let hosting = NSHostingController(rootView: framed)
+        let window = PopupWindow(contentViewController: hosting)
+        window.styleMask = [.borderless, .fullSizeContentView]
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        window.isMovableByWindowBackground = true
+        window.hidesOnDeactivate = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        // 内容搬进容器，容器最底层放「阴影 + 毛玻璃」，与功能弹窗同一套外壳
+        if let oldContent = window.contentView {
+            let hostView = oldContent
+            let container = NSView(frame: hostView.bounds)
+            container.wantsLayer = true
+            hostView.removeFromSuperview()
+            hostView.frame = container.bounds
+            hostView.autoresizingMask = [.width, .height]
+            let chrome = PopupChrome(frame: container.bounds)
+            chrome.autoresizingMask = [.width, .height]
+            container.addSubview(chrome)
+            container.addSubview(hostView)
+            window.contentView = container
+        }
+
+        window.setContentSize(NSSize(width: size.width + 2 * inset,
+                                     height: size.height + 2 * inset))
+        return window
     }
 }
 

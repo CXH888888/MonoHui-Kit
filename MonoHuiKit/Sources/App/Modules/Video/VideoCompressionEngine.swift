@@ -278,6 +278,14 @@ actor VideoCompressionEngine {
             return updated
         }
 
+        // 已压缩产物跳过：clip-压缩.mp4 再压一次会变成 clip-压缩-压缩.mp4。
+        // 视频转码是整条链路里最耗时的操作，这一步能直接省掉大量无意义编码。
+        if CompressionNaming.skipCompressedEnabled,
+           let tag = CompressionNaming.videoTag(inFileName: item.fileName) {
+            updated.status = .skipped("已是压缩产物（-\(tag)），已跳过")
+            return updated
+        }
+
         let asset = AVURLAsset(url: item.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
 
         do {

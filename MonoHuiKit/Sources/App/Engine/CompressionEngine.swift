@@ -180,6 +180,15 @@ actor CompressionEngine {
             return updated
         }
 
+        // 1.5) 已压缩产物直接跳过：photo-q75.jpg 再压一次会变成 photo-q75-q75.jpg，
+        //      画质二次劣化，文件名也会一层层叠上去。批量选中整个文件夹时这一步
+        //      能省掉大量重复编码，且不启动任何进程。
+        if CompressionNaming.skipCompressedEnabled,
+           let tag = CompressionNaming.imageTag(inFileName: item.fileName) {
+            updated.status = .skipped("已是压缩产物（-\(tag)），已跳过")
+            return updated
+        }
+
         // 2) 解析实际目标：保持原格式时按文件自身格式走
         let sourceFormat = item.estimatedFormat
         let ext = item.fileExtension
