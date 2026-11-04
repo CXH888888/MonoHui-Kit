@@ -170,17 +170,23 @@ struct ShelfSettingsView: View {
 
             SectionDivider()
 
-            removeOptionRow(
-                title: "放回原位",
-                subtitle: "仅从中转站移除，不动文件",
-                action: "keep"
-            )
-            SectionDivider()
-            removeOptionRow(
-                title: "移到 App 回收站",
-                subtitle: "进入 App 回收站，超量自动清理",
-                action: "trash"
-            )
+            // 一行两个大选择（沿用 v3 的按钮式单选：图标 + 标题 + 说明，选中描蓝边）
+            HStack(spacing: 8) {
+                removeOptionButton(
+                    title: "放回原位",
+                    subtitle: "仅从中转站移除，不动文件",
+                    icon: "arrow.uturn.backward",
+                    action: "keep"
+                )
+                removeOptionButton(
+                    title: "移到 App 回收站",
+                    subtitle: "进入 App 回收站，超量自动清理",
+                    icon: "trash",
+                    action: "trash"
+                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
         .background(Color.appleSurface)
         .overlay(
@@ -190,29 +196,35 @@ struct ShelfSettingsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private func removeOptionRow(title: String, subtitle: String, action: String) -> some View {
+    /// 移除方式选项按钮（并排大块）
+    private func removeOptionButton(title: String, subtitle: String, icon: String, action: String) -> some View {
         let isSelected = removeAction == action
         return Button {
             removeAction = action
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(isSelected ? Color.appleBlue : Color.appleMuted)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
-                    Text(subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.appleSoft)
-                }
-                Spacer()
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.appleSoft)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.appleBlue.opacity(0.12) : Color.appleSurface2.opacity(0.5))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.appleBlue : Color.clear, lineWidth: 1.5)
+            )
+            .foregroundStyle(isSelected ? Color.appleBlue : Color.appleInk)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.appleBlue.opacity(0.10) : Color.clear)
         }
         .buttonStyle(.plain)
     }
