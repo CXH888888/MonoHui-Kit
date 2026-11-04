@@ -38,8 +38,10 @@ extension Color {
     /// 弹窗根视图必须用它而不是 appleCanvas，否则不透明的白/黑会把毛玻璃完全盖掉。
     static let applePopupCanvas = dynamic(light: Color.white.opacity(0.74),
                                           dark: Color(red: 0.13, green: 0.13, blue: 0.14).opacity(0.62))
-    /// appleSurface（白 5% 半透明）合成到 appleCanvas 后的不透明等效色：
-    /// 卡片滚动渐变遮罩必须用它，直接用半透明的 appleSurface 盖不住滚出的内容
+    /// appleSurface（白 5% 半透明）合成到 `appleCanvas` 后的不透明等效色。
+    /// 只给**确实铺在 appleCanvas 上**的不透明底用（如拖拽引导卡片的背板）。
+    /// 不要再拿它当弹窗内卡片的滚动渐变遮罩：弹窗底是 `applePopupCanvas` 叠毛玻璃，
+    /// 合成值随壁纸明暗浮动，写死颜色在换背景后必然偏一条色带——滚动淡出统一走 `scrollEdgeFade`。
     static let appleCardOnCanvas = dynamic(light: .white,
                                            dark: Color(red: 0.155, green: 0.155, blue: 0.164))
     static let appleBorder = dynamic(light: Color.black.opacity(0.16),

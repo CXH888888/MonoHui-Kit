@@ -660,22 +660,9 @@ struct QuickRenameBatchPopover: View {
             )
         }
         .frame(height: editorViewportHeight)
-        // 顶部渐变遮罩：滚动离开顶部后浮现（与更名预览同款，遮罩色 = 卡片底合成到弹窗底的不透明等效色）
-        .overlay(alignment: .top) {
-            LinearGradient(colors: [Color.appleCardOnCanvas, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: editorFadeHeight)
-                .allowsHitTesting(false)
-                .opacity(geom.offset > 1 ? 1 : 0)
-                .animation(Motion.easeInstant, value: geom.offset > 1)
-        }
-        // 底部渐变遮罩：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
-        .overlay(alignment: .bottom) {
-            LinearGradient(colors: [.clear, Color.appleCardOnCanvas], startPoint: .top, endPoint: .bottom)
-                .frame(height: editorFadeHeight)
-                .allowsHitTesting(false)
-                .opacity(showEditorBottomFade(geom) ? 1 : 0)
-                .animation(Motion.easeInstant, value: showEditorBottomFade(geom))
-        }
+        // 顶/底渐变：滚动离开边界后淡出内容（与状态卡片、更名预览同款 mask 方案）
+        .scrollEdgeFade(top: geom.offset > 1, bottom: showEditorBottomFade(geom),
+                        length: editorFadeHeight)
     }
 
     /// 编辑器视口固定高度（对齐“状态两行”网格）

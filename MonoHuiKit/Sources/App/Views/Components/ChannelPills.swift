@@ -94,12 +94,7 @@ struct ChannelCustomPill: View {
     private var deleteIcon: some View {
         Image(systemName: "xmark.circle.fill")
             .font(.system(size: 12, weight: .regular))
-            .foregroundStyle(.white, Color.red.opacity(0.9))
-            .background(
-                Circle()
-                    .fill(Color.appleCardOnCanvas)
-                    .frame(width: 18, height: 18)
-            )
+            .foregroundStyle(.white, Color.red)
     }
 }
 

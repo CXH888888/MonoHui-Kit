@@ -163,22 +163,9 @@ extension QuickRenamePopover {
                 )
             }
             .frame(height: Self.statusGridViewportHeight)
-            // 顶部渐变：滚动离开顶部后浮现（遮罩色 = 卡片底合成到弹窗底的不透明等效色）
-            .overlay(alignment: .top) {
-                LinearGradient(colors: [Color.appleCardOnCanvas, .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.statusGridFadeHeight)
-                    .allowsHitTesting(false)
-                    .opacity(statusTopFade ? 1 : 0)
-                    .animation(Motion.easeInstant, value: statusTopFade)
-            }
-            // 底部渐变：下方还有未看完的内容时浮现，滚到底自动消失，与顶部对称
-            .overlay(alignment: .bottom) {
-                LinearGradient(colors: [.clear, Color.appleCardOnCanvas], startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.statusGridFadeHeight)
-                    .allowsHitTesting(false)
-                    .opacity(statusBottomFade ? 1 : 0)
-                    .animation(Motion.easeInstant, value: statusBottomFade)
-            }
+            // 顶/底渐变：滚动离开边界后淡出内容（走 mask，不再覆盖近似底色）
+            .scrollEdgeFade(top: statusTopFade, bottom: statusBottomFade,
+                            length: Self.statusGridFadeHeight)
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
         }
@@ -310,12 +297,7 @@ extension QuickRenamePopover {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(.white, Color.red.opacity(0.9))
-                                .background(
-                                    Circle()
-                                        .fill(Color.appleCardOnCanvas)
-                                        .frame(width: 18, height: 18)
-                                )
+                                .foregroundStyle(.white, Color.red)
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))

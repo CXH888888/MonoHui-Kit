@@ -239,12 +239,7 @@ extension QuickRenameBatchPopover {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.white, Color.red.opacity(0.9))
-                        .background(
-                            Circle()
-                                .fill(Color.appleCardOnCanvas)
-                                .frame(width: 18, height: 18)
-                        )
+                        .foregroundStyle(.white, Color.red)
                 }
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())

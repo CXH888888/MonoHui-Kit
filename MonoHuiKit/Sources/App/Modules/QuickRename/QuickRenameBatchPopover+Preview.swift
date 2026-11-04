@@ -41,22 +41,9 @@ extension QuickRenameBatchPopover {
                 )
             }
             .frame(height: previewListFitHeight)
-            // 顶部渐变遮罩：滚动离开顶部后浮现，避免内容生硬截断
-            .overlay(alignment: .top) {
-                LinearGradient(colors: [Color.appleSurface2, .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 14)
-                    .allowsHitTesting(false)
-                    .opacity(showPreviewTopFade ? 1 : 0)
-                    .animation(Motion.easeInstant, value: showPreviewTopFade)
-            }
-            // 底部渐变遮罩：下方还有内容时浮现，提示可滚动
-            .overlay(alignment: .bottom) {
-                LinearGradient(colors: [.clear, Color.appleSurface2], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 14)
-                    .allowsHitTesting(false)
-                    .opacity(showPreviewBottomFade ? 1 : 0)
-                    .animation(Motion.easeInstant, value: showPreviewBottomFade)
-            }
+            // 顶/底渐变：滚动离开边界后淡出内容。本区直接铺在弹窗底上，
+            // 之前用的 appleSurface2 比弹窗底亮 10/255，会浮出一条浅灰带（改成 mask 后无需配色）
+            .scrollEdgeFade(top: showPreviewTopFade, bottom: showPreviewBottomFade, length: 14)
             // 自绘细滚动条：贴右侧边缘；仅滚动期间显示，停止 0.9s 后淡出（macOS 覆盖式滚动条行为）
             .overlay(alignment: .trailing) {
                 GeometryReader { geo in
