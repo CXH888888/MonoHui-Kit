@@ -8,6 +8,13 @@
 
 ---
 
+## [v4.2.1] - 2026-11-04
+
+### 变更
+- **更换应用 Logo**：采用 1103 新版设计（木质纹理底 + 白色像素 K），`generate-icon.sh` 图标源文件由 `555-iOS-Default-1024x1024@1x.png` 切换为 `1103-MonoHui-Kit-logo-iOS-Default-1024x1024@1x.png`，重新生成 AppIcon.icns
+
+---
+
 ## [v4.2.0] - 2026-11-02
 
 ### 变更

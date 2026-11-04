@@ -1,0 +1,106 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-gray:0.00000,1.00000",
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "image-name" : "SVG Image.svg",
+          "name" : "SVG Image",
+          "position" : {
+            "scale" : 3.4,
+            "translation-in-points" : [
+              30,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 1
+      },
+      "specular-specializations" : [
+        {
+          "value" : true
+        },
+        {
+          "appearance" : "tinted",
+          "value" : false
+        }
+      ],
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "blend-mode" : "overlay",
+      "blur-material" : 0.5,
+      "hidden" : false,
+      "layers" : [
+        {
+          "image-name" : "SVG Image 2.svg",
+          "name" : "SVG Image 2",
+          "position" : {
+            "scale" : 3.4,
+            "translation-in-points" : [
+              30,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "image-name" : "工具 logo.png",
+          "name" : "工具 logo",
+          "position" : {
+            "scale" : 0.51,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.2
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
